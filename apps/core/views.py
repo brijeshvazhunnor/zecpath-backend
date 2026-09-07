@@ -1,12 +1,12 @@
 from django.http import JsonResponse
-from django.contrib.auth.models import User
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from .models import Job
+from .models import User, Job
 from .serializers import UserSerializer, JobSerializer
+
 
 def home(request):
     return JsonResponse({
@@ -19,7 +19,10 @@ class JobListAPIView(APIView):
     def get(self, request):
         jobs = Job.objects.all()
 
-        serializer = JobSerializer(jobs, many=True)
+        serializer = JobSerializer(
+            jobs,
+            many=True
+        )
 
         return Response(
             serializer.data,
@@ -30,9 +33,13 @@ class JobListAPIView(APIView):
 class JobCreateAPIView(APIView):
 
     def post(self, request):
-        serializer = JobSerializer(data=request.data)
+
+        serializer = JobSerializer(
+            data=request.data
+        )
 
         if serializer.is_valid():
+
             job = serializer.save()
 
             return Response(
@@ -49,9 +56,13 @@ class JobCreateAPIView(APIView):
 class UserTestAPIView(APIView):
 
     def get(self, request):
+
         users = User.objects.all()
 
-        serializer = UserSerializer(users, many=True)
+        serializer = UserSerializer(
+            users,
+            many=True
+        )
 
         return Response(
             serializer.data,
