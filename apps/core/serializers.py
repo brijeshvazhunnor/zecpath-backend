@@ -1,20 +1,24 @@
 from rest_framework import serializers
-from .models import User, Job, Application
+
+from .models import User, Job
 
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'name', 'email']
+        fields = [
+            "id",
+            "username",
+            "email",
+            "phone",
+            "role",
+            "is_verified",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class JobSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
-        fields = ['id', 'title', 'description']
-
-
-class ApplicationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Application
-        fields = ['id', 'user', 'job', 'applied_at']
+        fields = "__all__"
