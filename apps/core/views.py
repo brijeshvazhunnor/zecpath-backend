@@ -6,7 +6,7 @@ from rest_framework import status
 
 from .models import User, Job
 from .serializers import UserSerializer, JobSerializer
-
+from .permissions.roles import IsAdmin, IsAdminOrEmployer, IsCandidate
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -40,15 +40,12 @@ class JobListAPIView(APIView):
 
 
 class JobCreateAPIView(APIView):
+    permission_classes = [IsAdminOrEmployer]
 
     def post(self, request):
-
-        serializer = JobSerializer(
-            data=request.data
-        )
+        serializer = JobSerializer(data=request.data)
 
         if serializer.is_valid():
-
             job = serializer.save()
 
             return Response(
@@ -63,21 +60,15 @@ class JobCreateAPIView(APIView):
 
 
 class UserTestAPIView(APIView):
+    permission_classes = [IsAdmin]
 
     def get(self, request):
-
         users = User.objects.all()
-
-        serializer = UserSerializer(
-            users,
-            many=True
-        )
-
+        serializer = UserSerializer(users, many=True)
         return Response(
             serializer.data,
             status=status.HTTP_200_OK
         )
-
 
 
 class SignupAPIView(APIView):
