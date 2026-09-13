@@ -192,3 +192,39 @@ class Application(models.Model):
 
     def __str__(self):
         return f"{self.candidate} - {self.job}"
+
+
+
+
+class Resume(models.Model):
+
+    candidate = models.OneToOneField(
+        Candidate,
+        on_delete=models.CASCADE,
+        related_name="resume"
+    )
+
+    file = models.FileField(
+        upload_to="resumes/"
+    )
+
+    original_filename = models.CharField(
+        max_length=255
+    )
+
+    file_size = models.PositiveIntegerField()
+
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
+
+    is_active = models.BooleanField(
+        default=True
+    )
+
+    def __str__(self):
+        return f"{self.candidate.full_name} - {self.original_filename}"

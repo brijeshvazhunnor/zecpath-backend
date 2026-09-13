@@ -195,3 +195,132 @@ class EmployerProfileAPIView(RetrieveUpdateDestroyAPIView):
         instance.save(
             update_fields=["is_active"]
         )
+
+
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.generics import RetrieveUpdateAPIView
+
+from .models import Resume, Candidate
+from .serializers import ResumeSerializer
+
+class ResumeUploadAPIView(APIView):
+
+    parser_classes = [
+        MultiPartParser,
+        FormParser,
+    ]
+
+    permission_classes = [
+        IsAuthenticated,
+        IsCandidateProfileOwner,
+    ]
+
+    def post(self, request):
+
+        try:
+            candidate = Candidate.objects.get(
+                user=request.user
+            )
+        except Candidate.DoesNotExist:
+            return Response(
+                {"error": "Candidate profile not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        resume = Resume.objects.filter(
+            candidate=candidate
+        ).first()
+
+        serializer = ResumeSerializer(
+            instance=resume,
+            data=request.data,
+            partial=True
+        )
+
+        if serializer.is_valid():
+
+            uploaded_file = request.FILES.get("file")
+
+            if uploaded_file:
+
+                serializer.save(
+                    candidate=candidate,
+                    original_filename=uploaded_file.name,
+                    file_size=uploaded_file.size
+                )
+
+            return Response(
+                serializer.data,
+                status=status.HTTP_200_OK
+                if resume
+                else status.HTTP_201_CREATED
+            )
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class ResumeAPIView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsCandidateProfileOwner,
+    ]
+
+    def get(self, request):
+
+        try:
+            candidate = Candidate.objects.get(
+                user=request.user
+            )
+
+            resume = Resume.objects.get(
+                candidate=candidate
+            )
+
+        except (
+            Candidate.DoesNotExist,
+            Resume.DoesNotExist
+        ):
+            return Response(
+                {"error": "Resume not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = ResumeSerializer(resume)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
+
+
+    def delete(self, request):
+
+        try:
+            candidate = Candidate.objects.get(
+                user=request.user
+            )
+
+            resume = Resume.objects.get(
+                candidate=candidate
+            )
+
+        except (
+            Candidate.DoesNotExist,
+            Resume.DoesNotExist
+        ):
+            return Response(
+                {"error": "Resume not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        resume.is_active = False
+        resume.save(update_fields=["is_active"])
+
+        return Response(
+            {"message": "Resume deactivated successfully."},
+            status=status.HTTP_204_NO_CONTENT
+        )

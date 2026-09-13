@@ -83,3 +83,62 @@ class EmployerProfileSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+import os
+
+from rest_framework import serializers
+
+from .models import Candidate, Employer, Resume
+
+
+class ResumeSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Resume
+
+        fields = [
+            "id",
+            "file",
+            "original_filename",
+            "file_size",
+            "uploaded_at",
+            "updated_at",
+            "is_active",
+        ]
+
+        read_only_fields = [
+            "id",
+            "original_filename",
+            "file_size",
+            "uploaded_at",
+            "updated_at",
+            "is_active",
+        ]
+
+    def validate_file(self, value):
+
+        # Maximum file size: 5 MB
+        max_size = 5 * 1024 * 1024
+
+        if value.size > max_size:
+            raise serializers.ValidationError(
+                "Resume file size cannot exceed 5 MB."
+            )
+
+        # Allowed extensions
+        allowed_extensions = [
+            ".pdf",
+            ".docx",
+        ]
+
+        extension = os.path.splitext(
+            value.name
+        )[1].lower()
+
+        if extension not in allowed_extensions:
+            raise serializers.ValidationError(
+                "Only PDF and DOCX files are allowed."
+            )
+
+        return value
