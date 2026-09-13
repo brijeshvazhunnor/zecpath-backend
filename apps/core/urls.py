@@ -7,6 +7,8 @@ from .views import (
     SignupAPIView,
     LoginAPIView,
     LogoutAPIView,
+    CandidateProfileAPIView,
+    EmployerProfileAPIView,
 )
 
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -23,4 +25,16 @@ urlpatterns = [
     path("auth/login/", LoginAPIView.as_view(), name="login"),
     path("auth/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
     path("auth/logout/", LogoutAPIView.as_view(), name="logout"),
+
+    path(
+        "profile/candidate/",
+        CandidateProfileAPIView.as_view(),
+        name="candidate-profile",
+    ),
+
+    path(
+        "profile/employer/",
+        EmployerProfileAPIView.as_view(),
+        name="employer-profile",
+    ),
 ]

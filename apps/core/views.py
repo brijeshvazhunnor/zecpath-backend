@@ -16,6 +16,20 @@ from .auth_serializers import (
     EmailTokenObtainPairSerializer,
 )
 
+from rest_framework.generics import RetrieveUpdateDestroyAPIView
+from rest_framework.permissions import IsAuthenticated
+
+from .models import Candidate, Employer
+from .serializers import (
+    CandidateProfileSerializer,
+    EmployerProfileSerializer,
+)
+
+from .permissions.profile_permissions import (
+    IsCandidateProfileOwner,
+    IsEmployerProfileOwner,
+)
+
 
 def home(request):
     return JsonResponse({
@@ -135,3 +149,49 @@ class LogoutAPIView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+class CandidateProfileAPIView(RetrieveUpdateDestroyAPIView):
+
+    serializer_class = CandidateProfileSerializer
+
+    permission_classes = [
+        IsAuthenticated,
+        IsCandidateProfileOwner,
+    ]
+
+    def get_object(self):
+        return Candidate.objects.get(
+            user=self.request.user
+        )
+
+    def perform_destroy(self, instance):
+
+        instance.is_active = False
+
+        instance.save(
+            update_fields=["is_active"]
+        )
+
+
+class EmployerProfileAPIView(RetrieveUpdateDestroyAPIView):
+
+    serializer_class = EmployerProfileSerializer
+
+    permission_classes = [
+        IsAuthenticated,
+        IsEmployerProfileOwner,
+    ]
+
+    def get_object(self):
+        return Employer.objects.get(
+            user=self.request.user
+        )
+
+    def perform_destroy(self, instance):
+
+        instance.is_active = False
+
+        instance.save(
+            update_fields=["is_active"]
+        )

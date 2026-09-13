@@ -39,7 +39,6 @@ class User(AbstractUser):
 
 
 class Employer(models.Model):
-
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
@@ -47,15 +46,41 @@ class Employer(models.Model):
     )
 
     company_name = models.CharField(
-        max_length=200
+        max_length=200,
+        blank=True
+    )
+
+    domain = models.CharField(
+        max_length=200,
+        blank=True
+    )
+
+    company_size = models.CharField(
+        max_length=100,
+        blank=True
+    )
+
+    is_verified = models.BooleanField(
+        default=False
+    )
+
+    is_active = models.BooleanField(
+        default=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True
     )
 
     def __str__(self):
-        return self.company_name
+        return self.company_name or self.user.email
 
 
 class Candidate(models.Model):
-
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
@@ -67,6 +92,37 @@ class Candidate(models.Model):
     )
 
     email = models.EmailField()
+
+    skills = models.TextField(
+        blank=True
+    )
+
+    education = models.TextField(
+        blank=True
+    )
+
+    experience = models.TextField(
+        blank=True
+    )
+
+    expected_salary = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True
+    )
+
+    is_active = models.BooleanField(
+        default=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
 
     def __str__(self):
         return self.full_name
