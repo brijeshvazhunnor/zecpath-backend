@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
 
     "apps.core.apps.CoreConfig",
+    "django_filters",
 ]
 AUTH_USER_MODEL = "core.User"
 
@@ -68,6 +69,18 @@ REST_FRAMEWORK = {
     ),
 
     "EXCEPTION_HANDLER": "apps.core.exceptions.custom_exception_handler",
+
+    "DEFAULT_FILTER_BACKENDS": (
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.SearchFilter",
+        "rest_framework.filters.OrderingFilter",
+    ),
+
+    "DEFAULT_PAGINATION_CLASS": (
+        "apps.core.pagination.StandardResultsSetPagination"
+    ),
+
+    "PAGE_SIZE": 10,
 }
 
 

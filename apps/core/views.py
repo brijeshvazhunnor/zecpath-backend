@@ -1,28 +1,60 @@
 from django.http import JsonResponse
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.generics import (
+    ListAPIView,
+    RetrieveUpdateDestroyAPIView,
+)
+from rest_framework.permissions import (
+    AllowAny,
+    IsAuthenticated,
+)
+from rest_framework.filters import (
+    SearchFilter,
+    OrderingFilter,
+)
+from rest_framework.parsers import (
+    MultiPartParser,
+    FormParser,
+)
 
-from .models import User, Job
-from .serializers import UserSerializer, JobSerializer
-from .permissions.roles import IsAdmin, IsAdminOrEmployer, IsCandidate
-from rest_framework.permissions import AllowAny
-from rest_framework_simplejwt.views import TokenObtainPairView
+from django_filters.rest_framework import DjangoFilterBackend
+
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
 from rest_framework_simplejwt.tokens import RefreshToken
+
+from .models import (
+    User,
+    Job,
+    Candidate,
+    Employer,
+    Resume,
+    Application,
+)
+
+from .serializers import (
+    UserSerializer,
+    JobSerializer,
+    CandidateProfileSerializer,
+    EmployerProfileSerializer,
+    ResumeSerializer,
+    ApplicationSerializer,
+)
 
 from .auth_serializers import (
     SignupSerializer,
     EmailTokenObtainPairSerializer,
 )
 
-from rest_framework.generics import RetrieveUpdateDestroyAPIView
-from rest_framework.permissions import IsAuthenticated
-
-from .models import Candidate, Employer
-from .serializers import (
-    CandidateProfileSerializer,
-    EmployerProfileSerializer,
+from .permissions.roles import (
+    IsAdmin,
+    IsAdminOrEmployer,
+    IsCandidate,
 )
 
 from .permissions.profile_permissions import (
@@ -31,35 +63,101 @@ from .permissions.profile_permissions import (
 )
 
 
+# =========================================================
+# HOME
+# =========================================================
+
 def home(request):
     return JsonResponse({
         "message": "Hello Zecpath Backend"
     })
 
 
-class JobListAPIView(APIView):
+# =========================================================
+# JOB LIST - PAGINATION, FILTERING & SEARCH
+# =========================================================
 
-    def get(self, request):
-        jobs = Job.objects.all()
+class JobListAPIView(ListAPIView):
 
-        serializer = JobSerializer(
-            jobs,
-            many=True
+    serializer_class = JobSerializer
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+
+    filterset_fields = [
+        "location",
+        "experience",
+    ]
+
+    search_fields = [
+        "title",
+        "description",
+        "required_skills",
+        "location",
+    ]
+
+    ordering_fields = [
+        "created_at",
+        "title",
+        "experience",
+    ]
+
+    ordering = [
+        "-created_at"
+    ]
+
+    def get_queryset(self):
+
+        queryset = Job.objects.select_related(
+            "employer"
         )
 
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
+        created_after = self.request.query_params.get(
+            "created_after"
         )
 
+        created_before = self.request.query_params.get(
+            "created_before"
+        )
+
+        if created_after:
+            queryset = queryset.filter(
+                created_at__date__gte=created_after
+            )
+
+        if created_before:
+            queryset = queryset.filter(
+                created_at__date__lte=created_before
+            )
+
+        return queryset
+
+
+# =========================================================
+# JOB CREATE
+# =========================================================
 
 class JobCreateAPIView(APIView):
-    permission_classes = [IsAdminOrEmployer]
+
+    permission_classes = [
+        IsAdminOrEmployer
+    ]
 
     def post(self, request):
-        serializer = JobSerializer(data=request.data)
+
+        serializer = JobSerializer(
+            data=request.data
+        )
 
         if serializer.is_valid():
+
             job = serializer.save()
 
             return Response(
@@ -73,25 +171,69 @@ class JobCreateAPIView(APIView):
         )
 
 
-class UserTestAPIView(APIView):
-    permission_classes = [IsAdmin]
+# =========================================================
+# USERS - PAGINATION, FILTERING & SEARCH
+# =========================================================
 
-    def get(self, request):
-        users = User.objects.all()
-        serializer = UserSerializer(users, many=True)
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
+class UserTestAPIView(ListAPIView):
+
+    serializer_class = UserSerializer
+
+    permission_classes = [
+        IsAdmin
+    ]
+
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+
+    filterset_fields = [
+        "role",
+        "is_active",
+        "is_verified",
+    ]
+
+    search_fields = [
+        "username",
+        "email",
+        "phone",
+    ]
+
+    ordering_fields = [
+        "created_at",
+        "username",
+        "email",
+    ]
+
+    ordering = [
+        "-created_at"
+    ]
+
+    def get_queryset(self):
+
+        return User.objects.select_related(
+            "candidate",
+            "employer",
         )
 
 
+# =========================================================
+# SIGNUP
+# =========================================================
+
 class SignupAPIView(APIView):
 
-    permission_classes = [AllowAny]
+    permission_classes = [
+        AllowAny
+    ]
 
     def post(self, request):
 
-        serializer = SignupSerializer(data=request.data)
+        serializer = SignupSerializer(
+            data=request.data
+        )
 
         if serializer.is_valid():
 
@@ -112,15 +254,25 @@ class SignupAPIView(APIView):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+
+# =========================================================
+# LOGIN
+# =========================================================
+
 class LoginAPIView(TokenObtainPairView):
 
-    permission_classes = [AllowAny]
+    permission_classes = [
+        AllowAny
+    ]
 
-    serializer_class = EmailTokenObtainPairSerializer
+    serializer_class = (
+        EmailTokenObtainPairSerializer
+    )
 
 
-from rest_framework_simplejwt.views import TokenRefreshView
-
+# =========================================================
+# LOGOUT
+# =========================================================
 
 class LogoutAPIView(APIView):
 
@@ -130,7 +282,9 @@ class LogoutAPIView(APIView):
 
             refresh_token = request.data["refresh"]
 
-            token = RefreshToken(refresh_token)
+            token = RefreshToken(
+                refresh_token
+            )
 
             token.blacklist()
 
@@ -145,13 +299,20 @@ class LogoutAPIView(APIView):
 
             return Response(
                 {
-                    "error": "Invalid or expired refresh token"
+                    "error":
+                    "Invalid or expired refresh token"
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
 
-class CandidateProfileAPIView(RetrieveUpdateDestroyAPIView):
+# =========================================================
+# CANDIDATE PROFILE
+# =========================================================
+
+class CandidateProfileAPIView(
+    RetrieveUpdateDestroyAPIView
+):
 
     serializer_class = CandidateProfileSerializer
 
@@ -161,6 +322,7 @@ class CandidateProfileAPIView(RetrieveUpdateDestroyAPIView):
     ]
 
     def get_object(self):
+
         return Candidate.objects.get(
             user=self.request.user
         )
@@ -170,11 +332,19 @@ class CandidateProfileAPIView(RetrieveUpdateDestroyAPIView):
         instance.is_active = False
 
         instance.save(
-            update_fields=["is_active"]
+            update_fields=[
+                "is_active"
+            ]
         )
 
 
-class EmployerProfileAPIView(RetrieveUpdateDestroyAPIView):
+# =========================================================
+# EMPLOYER PROFILE
+# =========================================================
+
+class EmployerProfileAPIView(
+    RetrieveUpdateDestroyAPIView
+):
 
     serializer_class = EmployerProfileSerializer
 
@@ -184,6 +354,7 @@ class EmployerProfileAPIView(RetrieveUpdateDestroyAPIView):
     ]
 
     def get_object(self):
+
         return Employer.objects.get(
             user=self.request.user
         )
@@ -193,15 +364,15 @@ class EmployerProfileAPIView(RetrieveUpdateDestroyAPIView):
         instance.is_active = False
 
         instance.save(
-            update_fields=["is_active"]
+            update_fields=[
+                "is_active"
+            ]
         )
 
 
-from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.generics import RetrieveUpdateAPIView
-
-from .models import Resume, Candidate
-from .serializers import ResumeSerializer
+# =========================================================
+# RESUME UPLOAD
+# =========================================================
 
 class ResumeUploadAPIView(APIView):
 
@@ -218,12 +389,18 @@ class ResumeUploadAPIView(APIView):
     def post(self, request):
 
         try:
+
             candidate = Candidate.objects.get(
                 user=request.user
             )
+
         except Candidate.DoesNotExist:
+
             return Response(
-                {"error": "Candidate profile not found."},
+                {
+                    "error":
+                    "Candidate profile not found."
+                },
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -239,7 +416,9 @@ class ResumeUploadAPIView(APIView):
 
         if serializer.is_valid():
 
-            uploaded_file = request.FILES.get("file")
+            uploaded_file = request.FILES.get(
+                "file"
+            )
 
             if uploaded_file:
 
@@ -251,9 +430,11 @@ class ResumeUploadAPIView(APIView):
 
             return Response(
                 serializer.data,
-                status=status.HTTP_200_OK
-                if resume
-                else status.HTTP_201_CREATED
+                status=(
+                    status.HTTP_200_OK
+                    if resume
+                    else status.HTTP_201_CREATED
+                )
             )
 
         return Response(
@@ -261,6 +442,10 @@ class ResumeUploadAPIView(APIView):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+
+# =========================================================
+# RESUME
+# =========================================================
 
 class ResumeAPIView(APIView):
 
@@ -272,6 +457,7 @@ class ResumeAPIView(APIView):
     def get(self, request):
 
         try:
+
             candidate = Candidate.objects.get(
                 user=request.user
             )
@@ -284,22 +470,28 @@ class ResumeAPIView(APIView):
             Candidate.DoesNotExist,
             Resume.DoesNotExist
         ):
+
             return Response(
-                {"error": "Resume not found."},
+                {
+                    "error":
+                    "Resume not found."
+                },
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        serializer = ResumeSerializer(resume)
+        serializer = ResumeSerializer(
+            resume
+        )
 
         return Response(
             serializer.data,
             status=status.HTTP_200_OK
         )
 
-
     def delete(self, request):
 
         try:
+
             candidate = Candidate.objects.get(
                 user=request.user
             )
@@ -312,15 +504,95 @@ class ResumeAPIView(APIView):
             Candidate.DoesNotExist,
             Resume.DoesNotExist
         ):
+
             return Response(
-                {"error": "Resume not found."},
+                {
+                    "error":
+                    "Resume not found."
+                },
                 status=status.HTTP_404_NOT_FOUND
             )
 
         resume.is_active = False
-        resume.save(update_fields=["is_active"])
+
+        resume.save(
+            update_fields=[
+                "is_active"
+            ]
+        )
 
         return Response(
-            {"message": "Resume deactivated successfully."},
+            {
+                "message":
+                "Resume deactivated successfully."
+            },
             status=status.HTTP_204_NO_CONTENT
         )
+
+
+# =========================================================
+# APPLICATIONS - PAGINATION, FILTERING & SEARCH
+# =========================================================
+
+class ApplicationListAPIView(ListAPIView):
+
+    serializer_class = ApplicationSerializer
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+
+    filterset_fields = [
+        "status",
+        "job",
+        "candidate",
+    ]
+
+    search_fields = [
+        "job__title",
+        "job__description",
+        "candidate__full_name",
+        "candidate__skills",
+    ]
+
+    ordering_fields = [
+        "applied_at",
+        "status",
+    ]
+
+    ordering = [
+        "-applied_at"
+    ]
+
+    def get_queryset(self):
+
+        queryset = Application.objects.select_related(
+            "job",
+            "candidate",
+        )
+
+        applied_after = self.request.query_params.get(
+            "applied_after"
+        )
+
+        applied_before = self.request.query_params.get(
+            "applied_before"
+        )
+
+        if applied_after:
+            queryset = queryset.filter(
+                applied_at__date__gte=applied_after
+            )
+
+        if applied_before:
+            queryset = queryset.filter(
+                applied_at__date__lte=applied_before
+            )
+
+        return queryset

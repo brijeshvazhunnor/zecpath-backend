@@ -34,6 +34,14 @@ class User(AbstractUser):
         auto_now=True
     )
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["role"]),
+            models.Index(fields=["is_active"]),
+            models.Index(fields=["is_verified"]),
+            models.Index(fields=["created_at"]),
+        ]
+
     def __str__(self):
         return self.email
 
@@ -156,6 +164,13 @@ class Job(models.Model):
         auto_now_add=True
     )
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["location"]),
+            models.Index(fields=["experience"]),
+            models.Index(fields=["created_at"]),
+        ]
+    
     def __str__(self):
         return self.title
 
@@ -189,6 +204,12 @@ class Application(models.Model):
         choices=STATUS_CHOICES,
         default="applied"
     )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["applied_at"]),
+        ]
 
     def __str__(self):
         return f"{self.candidate} - {self.job}"

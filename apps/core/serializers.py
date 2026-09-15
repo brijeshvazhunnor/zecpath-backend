@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import User, Job, Candidate, Employer
+from .models import User, Job, Candidate, Employer, Application
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -142,3 +142,22 @@ class ResumeSerializer(serializers.ModelSerializer):
             )
 
         return value
+
+
+class ApplicationSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Application
+        fields = [
+            "id",
+            "job",
+            "candidate",
+            "applied_at",
+            "status",
+        ]
+
+        read_only_fields = [
+            "id",
+            "candidate",
+            "applied_at",
+        ]
