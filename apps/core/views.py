@@ -28,6 +28,10 @@ from rest_framework_simplejwt.views import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from rest_framework_simplejwt.exceptions import (
+    TokenError,
+)
+
 from .models import (
     User,
     Job,
@@ -295,7 +299,7 @@ class LogoutAPIView(APIView):
                 status=status.HTTP_205_RESET_CONTENT
             )
 
-        except Exception:
+        except (KeyError, TokenError):
 
             return Response(
                 {
@@ -529,7 +533,6 @@ class ResumeAPIView(APIView):
             status=status.HTTP_204_NO_CONTENT
         )
 
-
 # =========================================================
 # APPLICATIONS - PAGINATION, FILTERING & SEARCH
 # =========================================================
@@ -572,27 +575,29 @@ class ApplicationListAPIView(ListAPIView):
 
     def get_queryset(self):
 
+        user = self.request.user
+
         queryset = Application.objects.select_related(
             "job",
             "candidate",
         )
 
-        applied_after = self.request.query_params.get(
-            "applied_after"
-        )
+        # Admin can view all applications
+        if user.role == User.Role.ADMIN:
+            return queryset
 
-        applied_before = self.request.query_params.get(
-            "applied_before"
-        )
-
-        if applied_after:
-            queryset = queryset.filter(
-                applied_at__date__gte=applied_after
+        # Candidate can view only their own applications
+        if user.role == User.Role.CANDIDATE:
+            return queryset.filter(
+                candidate__user=user
             )
 
-        if applied_before:
-            queryset = queryset.filter(
-                applied_at__date__lte=applied_before
+        # Employer can view applications only
+        # for jobs belonging to their company
+        if user.role == User.Role.EMPLOYER:
+            return queryset.filter(
+                job__employer__user=user
             )
 
-        return queryset
+        # Unknown/unrecognized roles get no data
+        return queryset.none()
