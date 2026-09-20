@@ -19,9 +19,67 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class JobSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = Job
-        fields = "__all__"
+
+        fields = [
+            "id",
+            "employer",
+            "title",
+            "description",
+            "required_skills",
+            "experience",
+            "salary_min",
+            "salary_max",
+            "location",
+            "job_type",
+            "status",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "employer",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate(self, attrs):
+
+        salary_min = attrs.get("salary_min")
+        salary_max = attrs.get("salary_max")
+
+        if (
+            salary_min is not None
+            and salary_max is not None
+            and salary_min > salary_max
+        ):
+            raise serializers.ValidationError(
+                {
+                    "salary": (
+                        "Minimum salary cannot be greater "
+                        "than maximum salary."
+                    )
+                }
+            )
+
+        if salary_min is not None and salary_min < 0:
+            raise serializers.ValidationError(
+                {
+                    "salary_min": "Minimum salary cannot be negative."
+                }
+            )
+
+        if salary_max is not None and salary_max < 0:
+            raise serializers.ValidationError(
+                {
+                    "salary_max": "Maximum salary cannot be negative."
+                }
+            )
+
+        return attrs
 
 
 class CandidateProfileSerializer(serializers.ModelSerializer):

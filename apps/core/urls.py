@@ -11,6 +11,8 @@ from .views import (
     EmployerProfileAPIView,
     ResumeUploadAPIView,
     ResumeAPIView,
+    JobUpdateAPIView,
+    JobStatusAPIView,
     ApplicationListAPIView,
 )
 
@@ -54,6 +56,17 @@ urlpatterns = [
         "jobs/",
         JobListAPIView.as_view(),
         name="job-list",
+    ),
+    path(
+        "jobs/<int:pk>/",
+        JobUpdateAPIView.as_view(),
+        name="job-update",
+    ),
+
+    path(
+        "jobs/<int:pk>/status/",
+        JobStatusAPIView.as_view(),
+        name="job-status",
     ),
     path(
         "applications/",

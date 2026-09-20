@@ -138,6 +138,17 @@ class Candidate(models.Model):
 
 class Job(models.Model):
 
+    class JobType(models.TextChoices):
+        FULL_TIME = "full_time", "Full Time"
+        PART_TIME = "part_time", "Part Time"
+        CONTRACT = "contract", "Contract"
+        INTERNSHIP = "internship", "Internship"
+        TEMPORARY = "temporary", "Temporary"
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        INACTIVE = "inactive", "Inactive"
+
     employer = models.ForeignKey(
         Employer,
         on_delete=models.CASCADE,
@@ -150,27 +161,59 @@ class Job(models.Model):
 
     description = models.TextField()
 
-    location = models.CharField(
-        max_length=200
-    )
-
     required_skills = models.TextField()
 
     experience = models.CharField(
         max_length=100
     )
 
+    salary_min = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True
+    )
+
+    salary_max = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True
+    )
+
+    location = models.CharField(
+        max_length=200
+    )
+
+    job_type = models.CharField(
+        max_length=20,
+        choices=JobType.choices,
+        default=JobType.FULL_TIME
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True
     )
 
     class Meta:
         indexes = [
             models.Index(fields=["location"]),
             models.Index(fields=["experience"]),
+            models.Index(fields=["job_type"]),
+            models.Index(fields=["status"]),
             models.Index(fields=["created_at"]),
         ]
-    
+
     def __str__(self):
         return self.title
 

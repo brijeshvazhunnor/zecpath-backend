@@ -335,3 +335,225 @@ class ApplicationSecurityTests(APITestCase):
             response.data["count"],
             2
         )
+
+
+class JobManagementTests(APITestCase):
+
+    def setUp(self):
+
+        self.employer1 = User.objects.create_user(
+            username="jobemployer1",
+            email="jobemployer1@example.com",
+            password="Employer@12345",
+            role="employer",
+        )
+
+        self.employer2 = User.objects.create_user(
+            username="jobemployer2",
+            email="jobemployer2@example.com",
+            password="Employer@12345",
+            role="employer",
+        )
+
+        self.candidate = User.objects.create_user(
+            username="jobcandidate",
+            email="jobcandidate@example.com",
+            password="Candidate@12345",
+            role="candidate",
+        )
+
+        self.job = Job.objects.create(
+            employer=self.employer1.employer,
+            title="Python Developer",
+            description="Backend development",
+            required_skills="Python, Django",
+            experience="1-2 years",
+            salary_min=30000,
+            salary_max=50000,
+            location="Kochi",
+            job_type="full_time",
+            status="active",
+        )
+
+    def test_employer_can_create_job(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.post(
+            "/api/jobs/create/",
+            {
+                "title": "Django Developer",
+                "description": "Django backend development",
+                "required_skills": "Python, Django, REST API",
+                "experience": "1-3 years",
+                "salary_min": 35000,
+                "salary_max": 60000,
+                "location": "Kochi",
+                "job_type": "full_time",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED
+        )
+
+        self.assertEqual(
+            response.data["employer"],
+            self.employer1.employer.id
+        )
+
+    def test_candidate_cannot_create_job(self):
+
+        self.client.force_authenticate(
+            user=self.candidate
+        )
+
+        response = self.client.post(
+            "/api/jobs/create/",
+            {
+                "title": "Unauthorized Job",
+                "description": "Should not be created",
+                "required_skills": "Python",
+                "experience": "1 year",
+                "salary_min": 20000,
+                "salary_max": 30000,
+                "location": "Kochi",
+                "job_type": "full_time",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN
+        )
+
+    def test_employer_can_update_own_job(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/jobs/{self.job.id}/",
+            {
+                "title": "Senior Python Developer"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.job.refresh_from_db()
+
+        self.assertEqual(
+            self.job.title,
+            "Senior Python Developer"
+        )
+
+    def test_employer_cannot_update_other_employer_job(self):
+
+        self.client.force_authenticate(
+            user=self.employer2
+        )
+
+        response = self.client.patch(
+            f"/api/jobs/{self.job.id}/",
+            {
+                "title": "Unauthorized Update"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_404_NOT_FOUND
+        )
+
+    def test_employer_can_deactivate_own_job(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/jobs/{self.job.id}/status/",
+            {
+                "status": "inactive"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.job.refresh_from_db()
+
+        self.assertEqual(
+            self.job.status,
+            "inactive"
+        )
+
+    def test_employer_can_activate_own_job(self):
+
+        self.job.status = "inactive"
+        self.job.save()
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/jobs/{self.job.id}/status/",
+            {
+                "status": "active"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.job.refresh_from_db()
+
+        self.assertEqual(
+            self.job.status,
+            "active"
+        )
+
+    def test_invalid_salary_range_is_rejected(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.post(
+            "/api/jobs/create/",
+            {
+                "title": "Invalid Salary Job",
+                "description": "Invalid salary test",
+                "required_skills": "Python",
+                "experience": "1 year",
+                "salary_min": 60000,
+                "salary_max": 30000,
+                "location": "Kochi",
+                "job_type": "full_time",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST
+        )

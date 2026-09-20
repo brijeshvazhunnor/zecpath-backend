@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.generics import (
     ListAPIView,
+    RetrieveUpdateAPIView,
     RetrieveUpdateDestroyAPIView,
 )
 from rest_framework.permissions import (
@@ -59,6 +60,7 @@ from .permissions.roles import (
     IsAdmin,
     IsAdminOrEmployer,
     IsCandidate,
+    IsEmployer,
 )
 
 from .permissions.profile_permissions import (
@@ -151,7 +153,7 @@ class JobListAPIView(ListAPIView):
 class JobCreateAPIView(APIView):
 
     permission_classes = [
-        IsAdminOrEmployer
+        IsEmployer
     ]
 
     def post(self, request):
@@ -162,7 +164,9 @@ class JobCreateAPIView(APIView):
 
         if serializer.is_valid():
 
-            job = serializer.save()
+            job = serializer.save(
+                employer=request.user.employer
+            )
 
             return Response(
                 JobSerializer(job).data,
@@ -172,6 +176,84 @@ class JobCreateAPIView(APIView):
         return Response(
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+# =========================================================
+# JOB UPDATE
+# =========================================================
+
+class JobUpdateAPIView(RetrieveUpdateAPIView):
+
+    serializer_class = JobSerializer
+
+    permission_classes = [
+        IsEmployer
+    ]
+
+    def get_queryset(self):
+
+        return Job.objects.filter(
+            employer__user=self.request.user
+        ).select_related(
+            "employer"
+        )
+
+
+# =========================================================
+# JOB ACTIVATE / DEACTIVATE
+# =========================================================
+
+class JobStatusAPIView(APIView):
+
+    permission_classes = [
+        IsEmployer
+    ]
+
+    def patch(self, request, pk):
+
+        try:
+            job = Job.objects.get(
+                pk=pk,
+                employer__user=request.user
+            )
+
+        except Job.DoesNotExist:
+
+            return Response(
+                {
+                    "error": "Job not found."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        new_status = request.data.get("status")
+
+        if new_status not in [
+            Job.Status.ACTIVE,
+            Job.Status.INACTIVE,
+        ]:
+
+            return Response(
+                {
+                    "error": (
+                        "Status must be either "
+                        "'active' or 'inactive'."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        job.status = new_status
+        job.save(update_fields=["status", "updated_at"])
+
+        return Response(
+            {
+                "message": "Job status updated successfully.",
+                "job_id": job.id,
+                "status": job.status,
+            },
+            status=status.HTTP_200_OK
         )
 
 
