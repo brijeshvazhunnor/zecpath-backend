@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.generics import (
     ListAPIView,
+    RetrieveAPIView,
     RetrieveUpdateAPIView,
     RetrieveUpdateDestroyAPIView,
 )
@@ -419,6 +420,105 @@ class JobStatusAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
+
+# =========================================================
+# APPLY FOR JOB
+# =========================================================
+
+class JobApplicationCreateAPIView(APIView):
+
+    permission_classes = [
+        IsCandidate
+    ]
+
+    def post(self, request, job_id):
+
+        # -------------------------------------------------
+        # Get the candidate profile
+        # -------------------------------------------------
+
+        candidate = request.user.candidate
+
+        # -------------------------------------------------
+        # Check whether the job exists and is active
+        # -------------------------------------------------
+
+        try:
+            job = Job.objects.get(
+                pk=job_id,
+                status=Job.Status.ACTIVE
+            )
+        except Job.DoesNotExist:
+            return Response(
+                {
+                    "error": "Job not found or is not currently active."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # -------------------------------------------------
+        # Prevent duplicate applications
+        # -------------------------------------------------
+
+        if Application.objects.filter(
+            candidate=candidate,
+            job=job
+        ).exists():
+
+            return Response(
+                {
+                    "error": "You have already applied for this job."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # -------------------------------------------------
+        # Candidate must have an active resume
+        # -------------------------------------------------
+
+        try:
+            resume = candidate.resume
+        except Resume.DoesNotExist:
+            return Response(
+                {
+                    "error": "Please upload a resume before applying."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not resume.is_active:
+            return Response(
+                {
+                    "error": "Please upload or activate a resume before applying."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # -------------------------------------------------
+        # Create resume snapshot
+        # -------------------------------------------------
+
+        resume_snapshot = {
+            "original_filename": resume.original_filename,
+            "file_size": resume.file_size,
+            "uploaded_at": resume.uploaded_at.isoformat(),
+        }
+
+        # -------------------------------------------------
+        # Create application
+        # -------------------------------------------------
+
+        application = Application.objects.create(
+            job=job,
+            candidate=candidate,
+            resume_snapshot=resume_snapshot,
+            status="applied"
+        )
+
+        return Response(
+            ApplicationSerializer(application).data,
+            status=status.HTTP_201_CREATED
+        )
 
 # =========================================================
 # USERS - PAGINATION, FILTERING & SEARCH
@@ -845,4 +945,44 @@ class ApplicationListAPIView(ListAPIView):
             )
 
         # Unknown/unrecognized roles get no data
+        return queryset.none()
+
+
+# =========================================================
+# APPLICATION DETAIL / TRACKING
+# =========================================================
+
+class ApplicationDetailAPIView(RetrieveAPIView):
+
+    serializer_class = ApplicationSerializer
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get_queryset(self):
+
+        user = self.request.user
+
+        queryset = Application.objects.select_related(
+            "job",
+            "candidate",
+        )
+
+        # Admin can view all applications
+        if user.role == User.Role.ADMIN:
+            return queryset
+
+        # Candidate can view only their own applications
+        if user.role == User.Role.CANDIDATE:
+            return queryset.filter(
+                candidate__user=user
+            )
+
+        # Employer can view applications
+        # for jobs belonging to their company
+        if user.role == User.Role.EMPLOYER:
+            return queryset.filter(
+                job__employer__user=user
+            )
+
         return queryset.none()

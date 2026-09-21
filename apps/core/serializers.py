@@ -207,10 +207,12 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Application
+
         fields = [
             "id",
             "job",
             "candidate",
+            "resume_snapshot",
             "applied_at",
             "status",
         ]
@@ -218,5 +220,6 @@ class ApplicationSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "candidate",
+            "resume_snapshot",
             "applied_at",
         ]

@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APITestCase
-from apps.core.models import Job, Application
+from apps.core.models import Job, Application, Resume
 
 User = get_user_model()
 
@@ -336,6 +336,185 @@ class ApplicationSecurityTests(APITestCase):
             2
         )
 
+    # =========================================================
+    # DAY 18 - JOB APPLICATION TESTS
+    # =========================================================
+
+    def test_candidate_can_apply_for_active_job(self):
+        resume = Resume.objects.create(
+            candidate=self.candidate1.candidate,
+            original_filename="candidate1_resume.pdf",
+            file_size=1024,
+            is_active=True,
+        )
+
+        self.client.force_authenticate(
+            user=self.candidate1
+        )
+
+        response = self.client.post(
+            f"/api/jobs/{self.job2.id}/apply/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED
+        )
+
+        self.assertTrue(
+            Application.objects.filter(
+                candidate=self.candidate1.candidate,
+                job=self.job2
+            ).exists()
+        )
+
+        application = Application.objects.get(
+            candidate=self.candidate1.candidate,
+            job=self.job2
+        )
+
+        self.assertEqual(
+            application.status,
+            "applied"
+        )
+
+        self.assertEqual(
+            application.resume_snapshot["original_filename"],
+            "candidate1_resume.pdf"
+        )
+
+    def test_duplicate_application_is_rejected(self):
+        resume = Resume.objects.create(
+            candidate=self.candidate1.candidate,
+            original_filename="candidate1_resume.pdf",
+            file_size=1024,
+            is_active=True,
+        )
+
+        self.client.force_authenticate(
+            user=self.candidate1
+        )
+
+        response = self.client.post(
+            f"/api/jobs/{self.job2.id}/apply/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED
+        )
+
+        response = self.client.post(
+            f"/api/jobs/{self.job2.id}/apply/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST
+        )
+
+        self.assertEqual(
+            Application.objects.filter(
+                candidate=self.candidate1.candidate,
+                job=self.job2
+            ).count(),
+            1
+        )
+
+    def test_employer_cannot_apply_for_job(self):
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.post(
+            f"/api/jobs/{self.job2.id}/apply/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN
+        )
+
+    def test_candidate_without_resume_cannot_apply(self):
+        self.client.force_authenticate(
+            user=self.candidate1
+        )
+
+        response = self.client.post(
+            f"/api/jobs/{self.job2.id}/apply/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST
+        )
+
+        self.assertIn(
+            "resume",
+            str(response.data).lower()
+        )
+
+    def test_candidate_cannot_apply_for_inactive_job(self):
+        self.job2.status = Job.Status.INACTIVE
+        self.job2.save(update_fields=["status"])
+
+        resume = Resume.objects.create(
+            candidate=self.candidate1.candidate,
+            original_filename="candidate1_resume.pdf",
+            file_size=1024,
+            is_active=True,
+        )
+
+        self.client.force_authenticate(
+            user=self.candidate1
+        )
+
+        response = self.client.post(
+            f"/api/jobs/{self.job2.id}/apply/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_404_NOT_FOUND
+        )
+
+    def test_candidate_can_view_own_application_detail(self):
+        self.client.force_authenticate(
+            user=self.candidate1
+        )
+
+        response = self.client.get(
+            f"/api/applications/{self.application1.id}/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.assertEqual(
+            response.data["id"],
+            self.application1.id
+        )
+
+        self.assertEqual(
+            response.data["status"],
+            "applied"
+        )
+
+    def test_candidate_cannot_view_another_candidate_application_detail(self):
+        self.client.force_authenticate(
+            user=self.candidate1
+        )
+
+        response = self.client.get(
+            f"/api/applications/{self.application2.id}/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_404_NOT_FOUND
+        )
 
 class JobManagementTests(APITestCase):
 

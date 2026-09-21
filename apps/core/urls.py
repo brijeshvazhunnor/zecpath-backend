@@ -16,6 +16,8 @@ from .views import (
     JobUpdateAPIView,
     JobStatusAPIView,
     ApplicationListAPIView,
+    ApplicationDetailAPIView,
+    JobApplicationCreateAPIView
 )
 
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -77,6 +79,11 @@ urlpatterns = [
         name="job-list",
     ),
     path(
+        "jobs/<int:job_id>/apply/",
+        JobApplicationCreateAPIView.as_view(),
+        name="job-application-create",
+    ),
+    path(
         "jobs/<int:pk>/",
         JobUpdateAPIView.as_view(),
         name="job-update",
@@ -91,5 +98,11 @@ urlpatterns = [
         "applications/",
         ApplicationListAPIView.as_view(),
         name="application-list",
+    ),
+
+    path(
+        "applications/<int:pk>/",
+        ApplicationDetailAPIView.as_view(),
+        name="application-detail",
     ),
 ]

@@ -235,6 +235,13 @@ class Application(models.Model):
         related_name="applications"
     )
 
+    # Snapshot of the resume used when the application was submitted.
+    # This preserves the resume metadata even if the candidate
+    # later updates their current resume.
+    resume_snapshot = models.JSONField(
+        default=dict
+    )
+
     applied_at = models.DateTimeField(
         auto_now_add=True
     )
@@ -252,14 +259,22 @@ class Application(models.Model):
     )
 
     class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["candidate", "job"],
+                name="unique_candidate_job_application"
+            ),
+        ]
+
         indexes = [
             models.Index(fields=["status"]),
             models.Index(fields=["applied_at"]),
+            models.Index(fields=["candidate", "applied_at"]),
+            models.Index(fields=["job", "status"]),
         ]
 
     def __str__(self):
         return f"{self.candidate} - {self.job}"
-
 
 
 
