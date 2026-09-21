@@ -17,7 +17,9 @@ from .views import (
     JobStatusAPIView,
     ApplicationListAPIView,
     ApplicationDetailAPIView,
-    JobApplicationCreateAPIView
+    JobApplicationCreateAPIView,
+    ApplicationStatusUpdateAPIView,
+    ApplicationStatusHistoryAPIView,
 )
 
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -104,5 +106,16 @@ urlpatterns = [
         "applications/<int:pk>/",
         ApplicationDetailAPIView.as_view(),
         name="application-detail",
+    ),
+    path(
+        "applications/<int:pk>/status/",
+        ApplicationStatusUpdateAPIView.as_view(),
+        name="application-status-update",
+    ),
+
+    path(
+        "applications/<int:pk>/history/",
+        ApplicationStatusHistoryAPIView.as_view(),
+        name="application-status-history",
     ),
 ]

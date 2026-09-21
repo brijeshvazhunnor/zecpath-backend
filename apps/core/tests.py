@@ -1,8 +1,12 @@
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APITestCase
-from apps.core.models import Job, Application, Resume
-
+from apps.core.models import (
+    Job,
+    Application,
+    Resume,
+    ApplicationStatusHistory,
+)
 User = get_user_model()
 
 
@@ -336,6 +340,7 @@ class ApplicationSecurityTests(APITestCase):
             2
         )
 
+
     # =========================================================
     # DAY 18 - JOB APPLICATION TESTS
     # =========================================================
@@ -514,6 +519,317 @@ class ApplicationSecurityTests(APITestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_404_NOT_FOUND
+        )
+
+    # =========================================================
+    # DAY 19 - ATS WORKFLOW TESTS
+    # =========================================================
+
+    def test_employer_can_shortlist_candidate(self):
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/applications/{self.application1.id}/status/",
+            {
+                "status": "shortlisted"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.application1.refresh_from_db()
+
+        self.assertEqual(
+            self.application1.status,
+            "shortlisted"
+        )
+
+    def test_employer_can_schedule_interview(self):
+        self.application1.status = "shortlisted"
+        self.application1.save(
+            update_fields=["status"]
+        )
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/applications/{self.application1.id}/status/",
+            {
+                "status": "interview_scheduled"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.application1.refresh_from_db()
+
+        self.assertEqual(
+            self.application1.status,
+            "interview_scheduled"
+        )
+
+    def test_employer_can_select_candidate(self):
+        self.application1.status = "interview_scheduled"
+        self.application1.save(
+            update_fields=["status"]
+        )
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/applications/{self.application1.id}/status/",
+            {
+                "status": "selected"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.application1.refresh_from_db()
+
+        self.assertEqual(
+            self.application1.status,
+            "selected"
+        )
+
+    def test_employer_can_reject_candidate(self):
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/applications/{self.application1.id}/status/",
+            {
+                "status": "rejected"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.application1.refresh_from_db()
+
+        self.assertEqual(
+            self.application1.status,
+            "rejected"
+        )
+
+    def test_invalid_status_transition_is_rejected(self):
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/applications/{self.application1.id}/status/",
+            {
+                "status": "selected"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST
+        )
+
+        self.application1.refresh_from_db()
+
+        self.assertEqual(
+            self.application1.status,
+            "applied"
+        )
+
+    def test_selected_application_is_locked(self):
+        self.application1.status = "selected"
+        self.application1.save(
+            update_fields=["status"]
+        )
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/applications/{self.application1.id}/status/",
+            {
+                "status": "rejected"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST
+        )
+
+        self.application1.refresh_from_db()
+
+        self.assertEqual(
+            self.application1.status,
+            "selected"
+        )
+
+    def test_rejected_application_is_locked(self):
+        self.application1.status = "rejected"
+        self.application1.save(
+            update_fields=["status"]
+        )
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/applications/{self.application1.id}/status/",
+            {
+                "status": "shortlisted"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST
+        )
+
+        self.application1.refresh_from_db()
+
+        self.assertEqual(
+            self.application1.status,
+            "rejected"
+        )
+
+    def test_employer_cannot_modify_another_employers_application(self):
+        self.client.force_authenticate(
+            user=self.employer2
+        )
+
+        response = self.client.patch(
+            f"/api/applications/{self.application1.id}/status/",
+            {
+                "status": "shortlisted"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_404_NOT_FOUND
+        )
+
+        self.application1.refresh_from_db()
+
+        self.assertEqual(
+            self.application1.status,
+            "applied"
+        )
+
+    def test_candidate_cannot_update_application_status(self):
+        self.client.force_authenticate(
+            user=self.candidate1
+        )
+
+        response = self.client.patch(
+            f"/api/applications/{self.application1.id}/status/",
+            {
+                "status": "shortlisted"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN
+        )
+
+    def test_status_change_creates_audit_record(self):
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/applications/{self.application1.id}/status/",
+            {
+                "status": "shortlisted"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        history = ApplicationStatusHistory.objects.get(
+            application=self.application1
+        )
+
+        self.assertEqual(
+            history.old_status,
+            "applied"
+        )
+
+        self.assertEqual(
+            history.new_status,
+            "shortlisted"
+        )
+
+        self.assertEqual(
+            history.changed_by,
+            self.employer1
+        )
+
+    def test_status_history_endpoint(self):
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        self.client.patch(
+            f"/api/applications/{self.application1.id}/status/",
+            {
+                "status": "shortlisted"
+            },
+            format="json",
+        )
+
+        response = self.client.get(
+            f"/api/applications/{self.application1.id}/history/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.assertEqual(
+            response.data["count"],
+            1
+        )
+
+        self.assertEqual(
+            response.data["results"][0]["new_status"],
+            "shortlisted"
         )
 
 class JobManagementTests(APITestCase):

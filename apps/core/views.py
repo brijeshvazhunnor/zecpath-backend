@@ -41,6 +41,7 @@ from .models import (
     Employer,
     Resume,
     Application,
+    ApplicationStatusHistory,
 )
 
 from .serializers import (
@@ -50,6 +51,7 @@ from .serializers import (
     EmployerProfileSerializer,
     ResumeSerializer,
     ApplicationSerializer,
+    ApplicationStatusHistorySerializer,
 )
 
 from .auth_serializers import (
@@ -983,6 +985,129 @@ class ApplicationDetailAPIView(RetrieveAPIView):
         if user.role == User.Role.EMPLOYER:
             return queryset.filter(
                 job__employer__user=user
+            )
+
+        return queryset.none()
+
+
+class ApplicationStatusUpdateAPIView(APIView):
+
+    permission_classes = [
+        IsEmployer
+    ]
+
+    def patch(self, request, pk):
+
+        new_status = request.data.get("status")
+
+        valid_statuses = [
+            choice[0]
+            for choice in Application.STATUS_CHOICES
+        ]
+
+        if new_status not in valid_statuses:
+            return Response(
+                {
+                    "error": "Invalid application status.",
+                    "allowed_statuses": valid_statuses,
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            application = Application.objects.select_related(
+                "job",
+                "job__employer",
+                "candidate",
+            ).get(
+                pk=pk,
+                job__employer__user=request.user,
+            )
+
+        except Application.DoesNotExist:
+            return Response(
+                {
+                    "error": "Application not found."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        old_status = application.status
+
+        if old_status == new_status:
+            return Response(
+                {
+                    "error": "Application is already in this status."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not application.can_transition_to(new_status):
+            return Response(
+                {
+                    "error": (
+                        f"Invalid status transition: "
+                        f"{old_status} -> {new_status}."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        application.status = new_status
+        application.save(
+            update_fields=[
+                "status",
+            ]
+        )
+
+        ApplicationStatusHistory.objects.create(
+            application=application,
+            old_status=old_status,
+            new_status=new_status,
+            changed_by=request.user,
+            action=f"Status changed from {old_status} to {new_status}",
+        )
+
+        return Response(
+            {
+                "message": "Application status updated successfully.",
+                "application_id": application.id,
+                "old_status": old_status,
+                "new_status": new_status,
+            },
+            status=status.HTTP_200_OK
+        )
+
+class ApplicationStatusHistoryAPIView(ListAPIView):
+
+    serializer_class = ApplicationStatusHistorySerializer
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get_queryset(self):
+
+        user = self.request.user
+
+        queryset = ApplicationStatusHistory.objects.select_related(
+            "application",
+            "changed_by",
+        ).filter(
+            application_id=self.kwargs["pk"]
+        )
+
+        if user.role == User.Role.ADMIN:
+            return queryset
+
+        if user.role == User.Role.CANDIDATE:
+            return queryset.filter(
+                application__candidate__user=user
+            )
+
+        if user.role == User.Role.EMPLOYER:
+            return queryset.filter(
+                application__job__employer__user=user
             )
 
         return queryset.none()

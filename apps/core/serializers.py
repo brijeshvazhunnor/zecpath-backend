@@ -1,7 +1,14 @@
 from rest_framework import serializers
 
-from .models import User, Job, Candidate, Employer, Application
-
+from .models import (
+    User,
+    Employer,
+    Candidate,
+    Job,
+    Application,
+    Resume,
+    ApplicationStatusHistory,
+)
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -222,4 +229,32 @@ class ApplicationSerializer(serializers.ModelSerializer):
             "candidate",
             "resume_snapshot",
             "applied_at",
+        ]
+
+
+class ApplicationStatusHistorySerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+        model = ApplicationStatusHistory
+
+        fields = [
+            "id",
+            "application",
+            "old_status",
+            "new_status",
+            "changed_by",
+            "action",
+            "changed_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "application",
+            "old_status",
+            "new_status",
+            "changed_by",
+            "action",
+            "changed_at",
         ]

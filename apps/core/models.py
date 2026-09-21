@@ -249,7 +249,9 @@ class Application(models.Model):
     STATUS_CHOICES = [
         ("applied", "Applied"),
         ("shortlisted", "Shortlisted"),
+        ("interview_scheduled", "Interview Scheduled"),
         ("rejected", "Rejected"),
+        ("selected", "Selected"),
     ]
 
     status = models.CharField(
@@ -257,6 +259,37 @@ class Application(models.Model):
         choices=STATUS_CHOICES,
         default="applied"
     )
+
+    VALID_STATUS_TRANSITIONS = {
+        "applied": [
+            "shortlisted",
+            "rejected",
+        ],
+        "shortlisted": [
+            "interview_scheduled",
+            "rejected",
+        ],
+        "interview_scheduled": [
+            "selected",
+            "rejected",
+        ],
+        "rejected": [],
+        "selected": [],
+    }
+
+    LOCKED_STATUSES = {
+        "rejected",
+        "selected",
+    }
+
+    def can_transition_to(self, new_status):
+        if self.status in self.LOCKED_STATUSES:
+            return False
+
+        return new_status in self.VALID_STATUS_TRANSITIONS.get(
+            self.status,
+            []
+        )
 
     class Meta:
         constraints = [
@@ -276,6 +309,57 @@ class Application(models.Model):
     def __str__(self):
         return f"{self.candidate} - {self.job}"
 
+
+class ApplicationStatusHistory(models.Model):
+
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="status_history"
+    )
+
+    old_status = models.CharField(
+        max_length=20,
+        blank=True
+    )
+
+    new_status = models.CharField(
+        max_length=20
+    )
+
+    changed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="application_status_changes"
+    )
+
+    action = models.CharField(
+        max_length=100,
+        blank=True
+    )
+
+    changed_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        ordering = ["changed_at"]
+
+        indexes = [
+            models.Index(
+                fields=["application", "changed_at"]
+            ),
+            models.Index(
+                fields=["changed_by", "changed_at"]
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"Application {self.application_id}: "
+            f"{self.old_status} -> {self.new_status}"
+        )
 
 
 class Resume(models.Model):
