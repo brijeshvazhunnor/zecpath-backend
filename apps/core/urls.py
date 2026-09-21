@@ -3,6 +3,8 @@ from django.urls import path
 from .views import (
     JobListAPIView,
     JobCreateAPIView,
+    FeaturedJobListAPIView,
+    LatestJobListAPIView,
     UserTestAPIView,
     SignupAPIView,
     LoginAPIView,
@@ -52,6 +54,23 @@ urlpatterns = [
         ResumeAPIView.as_view(),
         name="resume",
     ),
+    path(
+        "jobs/",
+        JobListAPIView.as_view(),
+        name="job-list",
+    ),
+    path(
+        "jobs/featured/",
+        FeaturedJobListAPIView.as_view(),
+        name="featured-job-list",
+    ),
+
+    path(
+        "jobs/latest/",
+        LatestJobListAPIView.as_view(),
+        name="latest-job-list",
+    ),
+
     path(
         "jobs/",
         JobListAPIView.as_view(),

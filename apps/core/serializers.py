@@ -35,6 +35,7 @@ class JobSerializer(serializers.ModelSerializer):
             "location",
             "job_type",
             "status",
+            "featured",
             "created_at",
             "updated_at",
         ]

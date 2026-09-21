@@ -82,13 +82,62 @@ def home(request):
 # =========================================================
 # JOB LIST - PAGINATION, FILTERING & SEARCH
 # =========================================================
+# =========================================================
+# FEATURED JOBS
+# =========================================================
+
+class FeaturedJobListAPIView(ListAPIView):
+
+    serializer_class = JobSerializer
+
+    permission_classes = [
+        AllowAny
+    ]
+
+    def get_queryset(self):
+
+        return Job.objects.filter(
+            status=Job.Status.ACTIVE,
+            featured=True
+        ).select_related(
+            "employer"
+        ).order_by(
+            "-created_at"
+        )
+
+
+# =========================================================
+# LATEST JOBS
+# =========================================================
+
+class LatestJobListAPIView(ListAPIView):
+
+    serializer_class = JobSerializer
+
+    permission_classes = [
+        AllowAny
+    ]
+
+    def get_queryset(self):
+
+        return Job.objects.filter(
+            status=Job.Status.ACTIVE
+        ).select_related(
+            "employer"
+        ).order_by(
+            "-created_at"
+        )
+# =========================================================
+# PUBLIC JOB LIST - FILTERING, SEARCH & PAGINATION
+# =========================================================
 
 class JobListAPIView(ListAPIView):
 
     serializer_class = JobSerializer
 
+    # Public job discovery API
     permission_classes = [
-        IsAuthenticated
+        AllowAny
     ]
 
     filter_backends = [
@@ -97,22 +146,29 @@ class JobListAPIView(ListAPIView):
         OrderingFilter,
     ]
 
+    # Exact/basic filters
     filterset_fields = [
         "location",
-        "experience",
+        "job_type",
+        "status",
     ]
 
+    # Keyword search
     search_fields = [
         "title",
         "description",
         "required_skills",
         "location",
+        "experience",
     ]
 
+    # Ordering
     ordering_fields = [
         "created_at",
         "title",
         "experience",
+        "salary_min",
+        "salary_max",
     ]
 
     ordering = [
@@ -121,9 +177,116 @@ class JobListAPIView(ListAPIView):
 
     def get_queryset(self):
 
-        queryset = Job.objects.select_related(
+        # -------------------------------------------------
+        # Only active jobs are publicly visible
+        # -------------------------------------------------
+
+        queryset = Job.objects.filter(
+            status=Job.Status.ACTIVE
+        ).select_related(
             "employer"
         )
+
+        # -------------------------------------------------
+        # Skill-based filtering
+        # Example:
+        # /api/jobs/?skills=python
+        # -------------------------------------------------
+
+        skills = self.request.query_params.get("skills")
+
+        if skills:
+            queryset = queryset.filter(
+                required_skills__icontains=skills
+            )
+
+        # -------------------------------------------------
+        # Experience filtering
+        # Example:
+        # /api/jobs/?experience=2 years
+        # -------------------------------------------------
+
+        experience = self.request.query_params.get("experience")
+
+        if experience:
+            queryset = queryset.filter(
+                experience__icontains=experience
+            )
+
+        # -------------------------------------------------
+        # Salary range filtering
+        #
+        # Example:
+        # /api/jobs/?salary_min=30000
+        # /api/jobs/?salary_max=60000
+        #
+        # Jobs whose salary range overlaps the requested
+        # candidate salary range are returned.
+        # -------------------------------------------------
+
+        salary_min = self.request.query_params.get(
+            "salary_min"
+        )
+
+        salary_max = self.request.query_params.get(
+            "salary_max"
+        )
+
+        if salary_min:
+            try:
+                salary_min = float(salary_min)
+
+                queryset = queryset.filter(
+                    salary_max__gte=salary_min
+                )
+
+            except ValueError:
+                pass
+
+        if salary_max:
+            try:
+                salary_max = float(salary_max)
+
+                queryset = queryset.filter(
+                    salary_min__lte=salary_max
+                )
+
+            except ValueError:
+                pass
+
+        # -------------------------------------------------
+        # Location filtering
+        # Example:
+        # /api/jobs/?location=Kochi
+        # -------------------------------------------------
+
+        location = self.request.query_params.get(
+            "location"
+        )
+
+        if location:
+            queryset = queryset.filter(
+                location__icontains=location
+            )
+
+        # -------------------------------------------------
+        # Job type filtering
+        # Example:
+        # /api/jobs/?job_type=full_time
+        # -------------------------------------------------
+
+        job_type = self.request.query_params.get(
+            "job_type"
+        )
+
+        if job_type:
+            queryset = queryset.filter(
+                job_type=job_type
+            )
+
+        # -------------------------------------------------
+        # Created date filtering
+        # -------------------------------------------------
 
         created_after = self.request.query_params.get(
             "created_after"

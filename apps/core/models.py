@@ -196,6 +196,7 @@ class Job(models.Model):
         choices=Status.choices,
         default=Status.ACTIVE
     )
+    featured = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(
         auto_now_add=True
@@ -211,6 +212,8 @@ class Job(models.Model):
             models.Index(fields=["experience"]),
             models.Index(fields=["job_type"]),
             models.Index(fields=["status"]),
+            models.Index(fields=["featured"]),
+            models.Index(fields=["status", "featured"]),
             models.Index(fields=["created_at"]),
         ]
 
