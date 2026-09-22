@@ -52,6 +52,7 @@ from .serializers import (
     ResumeSerializer,
     ApplicationSerializer,
     ApplicationStatusHistorySerializer,
+    EmployerApplicantSerializer,
 )
 
 from .auth_serializers import (
@@ -422,7 +423,118 @@ class JobStatusAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
+class EmployerJobListAPIView(ListAPIView):
 
+    serializer_class = JobSerializer
+    permission_classes = [
+        IsEmployer
+    ]
+
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+
+    filterset_fields = [
+        "status",
+        "job_type",
+        "location",
+    ]
+
+    search_fields = [
+        "title",
+        "description",
+        "required_skills",
+        "location",
+    ]
+
+    ordering_fields = [
+        "created_at",
+        "title",
+        "experience",
+        "salary_min",
+        "salary_max",
+    ]
+
+    ordering = [
+        "-created_at"
+    ]
+
+    def get_queryset(self):
+
+        return Job.objects.filter(
+            employer__user=self.request.user
+        ).select_related(
+            "employer"
+        )
+
+
+class EmployerJobUpdateAPIView(RetrieveUpdateAPIView):
+
+    serializer_class = JobSerializer
+    permission_classes = [
+        IsEmployer
+    ]
+
+    def get_queryset(self):
+
+        return Job.objects.filter(
+            employer__user=self.request.user
+        ).select_related(
+            "employer"
+        )
+
+
+class EmployerJobCloseAPIView(APIView):
+
+    permission_classes = [
+        IsEmployer
+    ]
+
+    def patch(self, request, pk):
+
+        try:
+            job = Job.objects.get(
+                pk=pk,
+                employer__user=request.user,
+            )
+
+        except Job.DoesNotExist:
+
+            return Response(
+                {
+                    "error": "Job not found."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if job.status == Job.Status.INACTIVE:
+
+            return Response(
+                {
+                    "error": "Job is already closed."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        job.status = Job.Status.INACTIVE
+
+        job.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        return Response(
+            {
+                "message": "Job closed successfully.",
+                "job_id": job.id,
+                "status": job.status,
+            },
+            status=status.HTTP_200_OK
+        )
 # =========================================================
 # APPLY FOR JOB
 # =========================================================
@@ -1111,3 +1223,122 @@ class ApplicationStatusHistoryAPIView(ListAPIView):
             )
 
         return queryset.none()
+
+
+class EmployerApplicantListAPIView(ListAPIView):
+
+    serializer_class = EmployerApplicantSerializer
+
+    permission_classes = [
+        IsEmployer
+    ]
+
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+
+    filterset_fields = [
+        "status",
+        "job",
+    ]
+
+    search_fields = [
+        "candidate__full_name",
+        "candidate__email",
+        "candidate__skills",
+        "candidate__education",
+        "candidate__experience",
+        "job__title",
+    ]
+
+    ordering_fields = [
+        "applied_at",
+        "status",
+    ]
+
+    ordering = [
+        "-applied_at"
+    ]
+
+    def get_queryset(self):
+
+        return Application.objects.filter(
+            job__employer__user=self.request.user
+        ).select_related(
+            "job",
+            "candidate",
+        )
+
+class EmployerAnalyticsAPIView(APIView):
+
+    permission_classes = [
+        IsEmployer
+    ]
+
+    def get(self, request):
+
+        employer = request.user.employer
+
+        jobs = Job.objects.filter(
+            employer=employer
+        )
+
+        applications = Application.objects.filter(
+            job__employer=employer
+        )
+
+        total_jobs = jobs.count()
+
+        active_jobs = jobs.filter(
+            status=Job.Status.ACTIVE
+        ).count()
+
+        closed_jobs = jobs.filter(
+            status=Job.Status.INACTIVE
+        ).count()
+
+        total_applications = applications.count()
+
+        shortlisted_applications = applications.filter(
+            status="shortlisted"
+        ).count()
+
+        interview_scheduled = applications.filter(
+            status="interview_scheduled"
+        ).count()
+
+        selected_applications = applications.filter(
+            status="selected"
+        ).count()
+
+        rejected_applications = applications.filter(
+            status="rejected"
+        ).count()
+
+        if total_applications > 0:
+            shortlist_ratio = round(
+                (
+                    shortlisted_applications
+                    / total_applications
+                ) * 100,
+                2
+            )
+        else:
+            shortlist_ratio = 0
+
+        return Response(
+            {
+                "total_jobs": total_jobs,
+                "active_jobs": active_jobs,
+                "closed_jobs": closed_jobs,
+                "total_applications": total_applications,
+                "shortlisted_applications": shortlisted_applications,
+                "interview_scheduled": interview_scheduled,
+                "selected_applications": selected_applications,
+                "rejected_applications": rejected_applications,
+                "shortlist_ratio": shortlist_ratio,
+            },
+            status=status.HTTP_200_OK
+        )

@@ -231,6 +231,44 @@ class ApplicationSerializer(serializers.ModelSerializer):
             "applied_at",
         ]
 
+class EmployerApplicantSerializer(serializers.ModelSerializer):
+
+    candidate_name = serializers.CharField(
+        source="candidate.full_name",
+        read_only=True
+    )
+
+    candidate_email = serializers.CharField(
+        source="candidate.email",
+        read_only=True
+    )
+
+    candidate_skills = serializers.CharField(
+        source="candidate.skills",
+        read_only=True
+    )
+
+    job_title = serializers.CharField(
+        source="job.title",
+        read_only=True
+    )
+
+    class Meta:
+        model = Application
+
+        fields = [
+            "id",
+            "job",
+            "job_title",
+            "candidate",
+            "candidate_name",
+            "candidate_email",
+            "candidate_skills",
+            "status",
+            "applied_at",
+        ]
+
+        read_only_fields = fields
 
 class ApplicationStatusHistorySerializer(
     serializers.ModelSerializer

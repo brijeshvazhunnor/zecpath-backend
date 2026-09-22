@@ -1052,3 +1052,469 @@ class JobManagementTests(APITestCase):
             response.status_code,
             status.HTTP_400_BAD_REQUEST
         )
+
+
+class EmployerDashboardTests(APITestCase):
+
+    def setUp(self):
+
+        self.employer1 = User.objects.create_user(
+            username="dashboard_employer1",
+            email="dashboard_employer1@example.com",
+            password="Employer@12345",
+            role="employer",
+        )
+
+        self.employer2 = User.objects.create_user(
+            username="dashboard_employer2",
+            email="dashboard_employer2@example.com",
+            password="Employer@12345",
+            role="employer",
+        )
+
+        self.candidate1 = User.objects.create_user(
+            username="dashboard_candidate1",
+            email="dashboard_candidate1@example.com",
+            password="Candidate@12345",
+            role="candidate",
+        )
+
+        self.candidate2 = User.objects.create_user(
+            username="dashboard_candidate2",
+            email="dashboard_candidate2@example.com",
+            password="Candidate@12345",
+            role="candidate",
+        )
+
+        self.candidate3 = User.objects.create_user(
+            username="dashboard_candidate3",
+            email="dashboard_candidate3@example.com",
+            password="Candidate@12345",
+            role="candidate",
+        )
+
+        self.job1 = Job.objects.create(
+            employer=self.employer1.employer,
+            title="Python Backend Developer",
+            description="Python Django backend development",
+            location="Kochi",
+            required_skills="Python, Django, REST API",
+            experience="0-2 years",
+            status=Job.Status.ACTIVE,
+        )
+
+        self.job2 = Job.objects.create(
+            employer=self.employer1.employer,
+            title="Machine Learning Engineer",
+            description="Machine learning and AI development",
+            location="Bangalore",
+            required_skills="Python, Machine Learning, TensorFlow",
+            experience="1-3 years",
+            status=Job.Status.INACTIVE,
+        )
+
+        self.job3 = Job.objects.create(
+            employer=self.employer2.employer,
+            title="Java Developer",
+            description="Java backend development",
+            location="Chennai",
+            required_skills="Java, Spring",
+            experience="2-4 years",
+            status=Job.Status.ACTIVE,
+        )
+
+        # Candidate 1 profile
+        self.candidate1.candidate.full_name = "Python Candidate"
+        self.candidate1.candidate.skills = "Python, Django, REST API"
+        self.candidate1.candidate.save()
+
+        # Candidate 2 profile
+        self.candidate2.candidate.full_name = "ML Candidate"
+        self.candidate2.candidate.skills = (
+            "Python, Machine Learning, TensorFlow"
+        )
+        self.candidate2.candidate.save()
+
+        # Candidate 3 profile
+        self.candidate3.candidate.full_name = "Backend Candidate"
+        self.candidate3.candidate.skills = "Python, Django, REST API"
+        self.candidate3.candidate.save()
+
+        # Application 1
+        self.application1 = Application.objects.create(
+            job=self.job1,
+            candidate=self.candidate1.candidate,
+            status="applied",
+        )
+
+        # Application 2
+        self.application2 = Application.objects.create(
+            job=self.job1,
+            candidate=self.candidate2.candidate,
+            status="shortlisted",
+        )
+
+        # Application 3
+        # Candidate 3 is used because candidate 1 already
+        # applied to job 1 above.
+        self.application3 = Application.objects.create(
+            job=self.job1,
+            candidate=self.candidate3.candidate,
+            status="interview_scheduled",
+        )
+
+        # Application 4
+        # Different job belonging to the same employer.
+        self.application4 = Application.objects.create(
+            job=self.job2,
+            candidate=self.candidate2.candidate,
+            status="selected",
+        )
+
+        # Application belonging to another employer.
+        self.application_other_employer = Application.objects.create(
+            job=self.job3,
+            candidate=self.candidate1.candidate,
+            status="rejected",
+        )
+
+    def test_employer_can_view_own_jobs(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.get(
+            "/api/employer/jobs/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        job_ids = [
+            job["id"]
+            for job in response.data["results"]
+        ]
+
+        self.assertIn(
+            self.job1.id,
+            job_ids
+        )
+
+        self.assertIn(
+            self.job2.id,
+            job_ids
+        )
+
+        self.assertNotIn(
+            self.job3.id,
+            job_ids
+        )
+
+    def test_employer_cannot_edit_another_employers_job(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/employer/jobs/{self.job3.id}/",
+            {
+                "title": "Unauthorized Update"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_404_NOT_FOUND
+        )
+
+        self.job3.refresh_from_db()
+
+        self.assertEqual(
+            self.job3.title,
+            "Java Developer"
+        )
+
+    def test_employer_can_edit_own_job(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/employer/jobs/{self.job1.id}/",
+            {
+                "title": "Senior Python Backend Developer"
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.job1.refresh_from_db()
+
+        self.assertEqual(
+            self.job1.title,
+            "Senior Python Backend Developer"
+        )
+
+    def test_employer_can_close_own_job(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/employer/jobs/{self.job1.id}/close/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.job1.refresh_from_db()
+
+        self.assertEqual(
+            self.job1.status,
+            Job.Status.INACTIVE
+        )
+
+    def test_employer_cannot_close_another_employers_job(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.patch(
+            f"/api/employer/jobs/{self.job3.id}/close/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_404_NOT_FOUND
+        )
+
+        self.job3.refresh_from_db()
+
+        self.assertEqual(
+            self.job3.status,
+            Job.Status.ACTIVE
+        )
+
+    def test_employer_can_view_own_applicants_only(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.get(
+            "/api/employer/applicants/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        application_ids = [
+            application["id"]
+            for application in response.data["results"]
+        ]
+
+        self.assertIn(
+            self.application1.id,
+            application_ids
+        )
+
+        self.assertIn(
+            self.application2.id,
+            application_ids
+        )
+
+        self.assertIn(
+            self.application3.id,
+            application_ids
+        )
+
+        self.assertIn(
+            self.application4.id,
+            application_ids
+        )
+
+        self.assertNotIn(
+            self.application_other_employer.id,
+            application_ids
+        )
+
+    def test_employer_can_filter_applicants_by_status(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.get(
+            "/api/employer/applicants/?status=shortlisted"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.assertEqual(
+            len(response.data["results"]),
+            1
+        )
+
+        self.assertEqual(
+            response.data["results"][0]["status"],
+            "shortlisted"
+        )
+
+        self.assertEqual(
+            response.data["results"][0]["id"],
+            self.application2.id
+        )
+
+    def test_employer_can_search_applicants(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.get(
+            "/api/employer/applicants/?search=Machine"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        application_ids = [
+            application["id"]
+            for application in response.data["results"]
+        ]
+
+        self.assertIn(
+            self.application2.id,
+            application_ids
+        )
+
+        self.assertIn(
+            self.application4.id,
+            application_ids
+        )
+
+    def test_employer_analytics_contains_correct_counts(self):
+
+        self.client.force_authenticate(
+            user=self.employer1
+        )
+
+        response = self.client.get(
+            "/api/employer/analytics/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.assertEqual(
+            response.data["total_jobs"],
+            2
+        )
+
+        self.assertEqual(
+            response.data["active_jobs"],
+            1
+        )
+
+        self.assertEqual(
+            response.data["closed_jobs"],
+            1
+        )
+
+        self.assertEqual(
+            response.data["total_applications"],
+            4
+        )
+
+        self.assertEqual(
+            response.data["shortlisted_applications"],
+            1
+        )
+
+        self.assertEqual(
+            response.data["interview_scheduled"],
+            1
+        )
+
+        self.assertEqual(
+            response.data["selected_applications"],
+            1
+        )
+
+        self.assertEqual(
+            response.data["rejected_applications"],
+            0
+        )
+
+        self.assertEqual(
+            response.data["shortlist_ratio"],
+            25.0
+        )
+
+    def test_employer_analytics_excludes_other_employers(self):
+
+        self.client.force_authenticate(
+            user=self.employer2
+        )
+
+        response = self.client.get(
+            "/api/employer/analytics/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.assertEqual(
+            response.data["total_jobs"],
+            1
+        )
+
+        self.assertEqual(
+            response.data["total_applications"],
+            1
+        )
+
+        self.assertEqual(
+            response.data["rejected_applications"],
+            1
+        )
+
+    def test_candidate_cannot_access_employer_analytics(self):
+
+        self.client.force_authenticate(
+            user=self.candidate1
+        )
+
+        response = self.client.get(
+            "/api/employer/analytics/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN
+        )
