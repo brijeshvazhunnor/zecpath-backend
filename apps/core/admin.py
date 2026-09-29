@@ -7,6 +7,7 @@ from .models import (
     Candidate,
     Job,
     Application,
+    SavedJob,
 )
 
 
@@ -119,4 +120,24 @@ class ApplicationAdmin(admin.ModelAdmin):
         "job__title",
         "candidate__full_name",
         "candidate__email",
+    )
+
+
+@admin.register(SavedJob)
+class SavedJobAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "candidate",
+        "job",
+        "saved_at",
+    )
+
+    list_filter = (
+        "saved_at",
+    )
+
+    search_fields = (
+        "candidate__full_name",
+        "candidate__email",
+        "job__title",
     )

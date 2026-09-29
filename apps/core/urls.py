@@ -25,6 +25,13 @@ from .views import (
     EmployerJobCloseAPIView,
     EmployerApplicantListAPIView,
     EmployerAnalyticsAPIView,
+    CandidateApplicationListAPIView,
+    CandidateApplicationDetailAPIView,
+    CandidateInterviewListAPIView,
+    CandidateSavedJobListCreateAPIView,
+    CandidateSavedJobDeleteAPIView,
+    CandidateApplicationTimelineAPIView,
+    CandidateRecommendationAPIView,
 )
 
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -149,5 +156,46 @@ urlpatterns = [
         "employer/analytics/",
         EmployerAnalyticsAPIView.as_view(),
         name="employer-analytics",
+    ),
+        # Candidate Dashboard
+    path(
+        "candidate/applications/",
+        CandidateApplicationListAPIView.as_view(),
+        name="candidate-application-list",
+    ),
+
+    path(
+        "candidate/applications/<int:pk>/",
+        CandidateApplicationDetailAPIView.as_view(),
+        name="candidate-application-detail",
+    ),
+
+    path(
+        "candidate/applications/<int:pk>/timeline/",
+        CandidateApplicationTimelineAPIView.as_view(),
+        name="candidate-application-timeline",
+    ),
+
+    path(
+        "candidate/interviews/",
+        CandidateInterviewListAPIView.as_view(),
+        name="candidate-interview-list",
+    ),
+
+    path(
+        "candidate/saved-jobs/",
+        CandidateSavedJobListCreateAPIView.as_view(),
+        name="candidate-saved-job-list-create",
+    ),
+
+    path(
+        "candidate/saved-jobs/<int:job_id>/",
+        CandidateSavedJobDeleteAPIView.as_view(),
+        name="candidate-saved-job-delete",
+    ),
+    path(
+        "candidate/recommendations/",
+        CandidateRecommendationAPIView.as_view(),
+        name="candidate-recommendations",
     ),
 ]

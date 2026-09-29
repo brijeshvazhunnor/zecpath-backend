@@ -394,3 +394,41 @@ class Resume(models.Model):
 
     def __str__(self):
         return f"{self.candidate.full_name} - {self.original_filename}"
+
+
+
+class SavedJob(models.Model):
+
+    candidate = models.ForeignKey(
+        Candidate,
+        on_delete=models.CASCADE,
+        related_name="saved_jobs"
+    )
+
+    job = models.ForeignKey(
+        Job,
+        on_delete=models.CASCADE,
+        related_name="saved_by_candidates"
+    )
+
+    saved_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["candidate", "job"],
+                name="unique_candidate_saved_job"
+            ),
+        ]
+
+        indexes = [
+            models.Index(fields=["candidate", "saved_at"]),
+            models.Index(fields=["job", "saved_at"]),
+        ]
+
+        ordering = ["-saved_at"]
+
+    def __str__(self):
+        return f"{self.candidate} - {self.job}"

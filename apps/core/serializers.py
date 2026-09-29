@@ -8,6 +8,7 @@ from .models import (
     Application,
     Resume,
     ApplicationStatusHistory,
+    SavedJob,
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -296,3 +297,122 @@ class ApplicationStatusHistorySerializer(
             "action",
             "changed_at",
         ]
+
+class SavedJobSerializer(serializers.ModelSerializer):
+
+    job_title = serializers.CharField(
+        source="job.title",
+        read_only=True
+    )
+
+    company_name = serializers.CharField(
+        source="job.employer.company_name",
+        read_only=True
+    )
+
+    job_location = serializers.CharField(
+        source="job.location",
+        read_only=True
+    )
+
+    job_type = serializers.CharField(
+        source="job.job_type",
+        read_only=True
+    )
+
+    class Meta:
+        model = SavedJob
+        fields = [
+            "id",
+            "job",
+            "job_title",
+            "company_name",
+            "job_location",
+            "job_type",
+            "saved_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "job_title",
+            "company_name",
+            "job_location",
+            "job_type",
+            "saved_at",
+        ]
+
+class CandidateApplicationSerializer(serializers.ModelSerializer):
+
+    job_title = serializers.CharField(
+        source="job.title",
+        read_only=True
+    )
+
+    company_name = serializers.CharField(
+        source="job.employer.company_name",
+        read_only=True
+    )
+
+    job_location = serializers.CharField(
+        source="job.location",
+        read_only=True
+    )
+
+    class Meta:
+        model = Application
+        fields = [
+            "id",
+            "job",
+            "job_title",
+            "company_name",
+            "job_location",
+            "status",
+            "applied_at",
+        ]
+
+        read_only_fields = fields
+
+
+class CandidateApplicationTimelineSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+        model = ApplicationStatusHistory
+        fields = [
+            "id",
+            "old_status",
+            "new_status",
+            "action",
+            "changed_at",
+        ]
+
+        read_only_fields = fields
+
+
+class CandidateRecommendationSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(
+        source="employer.company_name",
+        read_only=True
+    )
+    match_score = serializers.FloatField(read_only=True)
+    matched_skills = serializers.ListField(read_only=True)
+
+    class Meta:
+        model = Job
+        fields = [
+            "id",
+            "title",
+            "company_name",
+            "description",
+            "required_skills",
+            "experience",
+            "location",
+            "job_type",
+            "salary_min",
+            "salary_max",
+            "match_score",
+            "matched_skills",
+            "created_at",
+        ]
+        read_only_fields = fields

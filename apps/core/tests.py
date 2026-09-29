@@ -6,6 +6,8 @@ from apps.core.models import (
     Application,
     Resume,
     ApplicationStatusHistory,
+    Candidate,
+    Employer,
 )
 User = get_user_model()
 
@@ -1517,4 +1519,427 @@ class EmployerDashboardTests(APITestCase):
         self.assertEqual(
             response.status_code,
             status.HTTP_403_FORBIDDEN
+        )
+
+# =========================================================
+# DAY 21 - CANDIDATE DASHBOARD TESTS
+# =========================================================
+
+class CandidateDashboardTests(APITestCase):
+
+    def setUp(self):
+        self.employer = User.objects.create_user(
+            username="candidate_test_employer",
+            email="candidate_test_employer@example.com",
+            password="Employer@12345",
+            role="employer",
+        )
+
+        self.candidate = User.objects.create_user(
+            username="candidate_test_user",
+            email="candidate_test_user@example.com",
+            password="Candidate@12345",
+            role="candidate",
+        )
+
+        self.other_candidate = User.objects.create_user(
+            username="other_candidate",
+            email="other_candidate@example.com",
+            password="Candidate@12345",
+            role="candidate",
+        )
+
+        self.employer_profile = self.employer.employer
+        self.employer_profile.company_name = "Test Company"
+        self.employer_profile.save()
+
+        self.candidate_profile = self.candidate.candidate
+        self.candidate_profile.full_name = "Test Candidate"
+        self.candidate_profile.skills = "Python, Django, REST API, SQL"
+        self.candidate_profile.experience = "1 year"
+        self.candidate_profile.education = "MSc Computer Science"
+        self.candidate_profile.save()
+
+        self.other_candidate_profile = self.other_candidate.candidate
+        self.other_candidate_profile.full_name = "Other Candidate"
+        self.other_candidate_profile.skills = "Java, Spring"
+        self.other_candidate_profile.save()
+
+        self.job = Job.objects.create(
+            employer=self.employer_profile,
+            title="Python Django Developer",
+            description="Backend development using Python and Django.",
+            required_skills="Python, Django, REST API, PostgreSQL",
+            experience="1-2 years",
+            salary_min=25000,
+            salary_max=40000,
+            location="Kochi",
+            job_type=Job.JobType.FULL_TIME,
+            status=Job.Status.ACTIVE,
+        )
+
+        self.second_job = Job.objects.create(
+            employer=self.employer_profile,
+            title="Python Backend Developer",
+            description="Python backend development.",
+            required_skills="Python, Django",
+            experience="0-1 years",
+            salary_min=20000,
+            salary_max=35000,
+            location="Kochi",
+            job_type=Job.JobType.FULL_TIME,
+            status=Job.Status.ACTIVE,
+        )
+
+        self.unmatched_job = Job.objects.create(
+            employer=self.employer_profile,
+            title="Java Developer",
+            description="Java backend development.",
+            required_skills="Java, Spring, Hibernate",
+            experience="2-3 years",
+            salary_min=30000,
+            salary_max=50000,
+            location="Bangalore",
+            job_type=Job.JobType.FULL_TIME,
+            status=Job.Status.ACTIVE,
+        )
+
+        self.closed_job = Job.objects.create(
+            employer=self.employer_profile,
+            title="Closed Python Job",
+            description="This job is no longer active.",
+            required_skills="Python, Django",
+            experience="1 year",
+            location="Kochi",
+            job_type=Job.JobType.FULL_TIME,
+            status=Job.Status.INACTIVE,
+        )
+
+    # ---------------------------------------------------------
+    # CANDIDATE APPLICATIONS
+    # ---------------------------------------------------------
+
+    def test_candidate_can_view_own_applications(self):
+        application = Application.objects.create(
+            job=self.job,
+            candidate=self.candidate_profile,
+        )
+
+        self.client.force_authenticate(user=self.candidate)
+
+        response = self.client.get(
+            "/api/candidate/applications/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.assertEqual(
+            response.data["count"],
+            1
+        )
+
+        self.assertEqual(
+            response.data["results"][0]["id"],
+            application.id
+        )
+
+    def test_candidate_cannot_view_another_candidate_application(self):
+        Application.objects.create(
+            job=self.job,
+            candidate=self.other_candidate_profile,
+        )
+
+        self.client.force_authenticate(user=self.candidate)
+
+        response = self.client.get(
+            "/api/candidate/applications/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.assertEqual(
+            response.data["count"],
+            0
+        )
+
+    # ---------------------------------------------------------
+    # INTERVIEW STATUS
+    # ---------------------------------------------------------
+
+    def test_candidate_can_view_interview_applications(self):
+        Application.objects.create(
+            job=self.job,
+            candidate=self.candidate_profile,
+            status="interview_scheduled",
+        )
+
+        self.client.force_authenticate(user=self.candidate)
+
+        response = self.client.get(
+            "/api/candidate/interviews/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.assertEqual(
+            response.data["count"],
+            1
+        )
+
+    # ---------------------------------------------------------
+    # SAVED JOBS
+    # ---------------------------------------------------------
+
+    def test_candidate_can_save_job(self):
+        self.client.force_authenticate(user=self.candidate)
+
+        response = self.client.post(
+            "/api/candidate/saved-jobs/",
+            {"job": self.job.id},
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED
+        )
+
+        self.assertEqual(
+            response.data["job"],
+            self.job.id
+        )
+
+    def test_candidate_cannot_save_same_job_twice(self):
+        self.client.force_authenticate(user=self.candidate)
+
+        self.client.post(
+            "/api/candidate/saved-jobs/",
+            {"job": self.job.id},
+            format="json",
+        )
+
+        response = self.client.post(
+            "/api/candidate/saved-jobs/",
+            {"job": self.job.id},
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST
+        )
+
+    def test_candidate_can_remove_saved_job(self):
+        self.client.force_authenticate(user=self.candidate)
+
+        save_response = self.client.post(
+            "/api/candidate/saved-jobs/",
+            {"job": self.job.id},
+            format="json",
+        )
+
+        self.assertEqual(
+            save_response.status_code,
+            status.HTTP_201_CREATED
+        )
+
+        response = self.client.delete(
+            f"/api/candidate/saved-jobs/{self.job.id}/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_204_NO_CONTENT
+        )
+
+    # ---------------------------------------------------------
+    # SECURITY
+    # ---------------------------------------------------------
+
+    def test_employer_cannot_access_candidate_applications(self):
+        self.client.force_authenticate(user=self.employer)
+
+        response = self.client.get(
+            "/api/candidate/applications/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN
+        )
+
+    def test_employer_cannot_access_candidate_recommendations(self):
+        self.client.force_authenticate(user=self.employer)
+
+        response = self.client.get(
+            "/api/candidate/recommendations/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN
+        )
+
+    # ---------------------------------------------------------
+    # RECOMMENDATIONS
+    # ---------------------------------------------------------
+
+    def test_candidate_recommendations_return_matching_jobs(self):
+        self.client.force_authenticate(user=self.candidate)
+
+        response = self.client.get(
+            "/api/candidate/recommendations/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        job_ids = [
+            item["id"]
+            for item in response.data["results"]
+        ]
+
+        self.assertIn(
+            self.job.id,
+            job_ids
+        )
+
+        self.assertIn(
+            self.second_job.id,
+            job_ids
+        )
+
+        self.assertNotIn(
+            self.closed_job.id,
+            job_ids
+        )
+
+    def test_applied_job_is_excluded_from_recommendations(self):
+        Application.objects.create(
+            job=self.job,
+            candidate=self.candidate_profile,
+        )
+
+        self.client.force_authenticate(user=self.candidate)
+
+        response = self.client.get(
+            "/api/candidate/recommendations/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        job_ids = [
+            item["id"]
+            for item in response.data["results"]
+        ]
+
+        self.assertNotIn(
+            self.job.id,
+            job_ids
+        )
+
+    def test_recommendation_contains_skill_match_score(self):
+        self.client.force_authenticate(user=self.candidate)
+
+        response = self.client.get(
+            "/api/candidate/recommendations/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        recommendation = next(
+            item
+            for item in response.data["results"]
+            if item["id"] == self.job.id
+        )
+
+        self.assertEqual(
+            recommendation["match_score"],
+            75.0
+        )
+
+        self.assertEqual(
+            sorted(recommendation["matched_skills"]),
+            ["django", "python", "rest api"]
+        )
+
+    # ---------------------------------------------------------
+    # APPLICATION TIMELINE
+    # ---------------------------------------------------------
+
+    def test_candidate_can_view_application_timeline(self):
+        application = Application.objects.create(
+            job=self.job,
+            candidate=self.candidate_profile,
+        )
+
+        ApplicationStatusHistory.objects.create(
+            application=application,
+            old_status="",
+            new_status="applied",
+            changed_by=self.candidate,
+            action="Application submitted",
+        )
+
+        self.client.force_authenticate(user=self.candidate)
+
+        response = self.client.get(
+            f"/api/candidate/applications/{application.id}/timeline/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.assertEqual(
+            response.data["count"],
+            1
+        )
+
+    def test_candidate_cannot_view_another_candidate_timeline(self):
+        application = Application.objects.create(
+            job=self.job,
+            candidate=self.other_candidate_profile,
+        )
+
+        ApplicationStatusHistory.objects.create(
+            application=application,
+            old_status="",
+            new_status="applied",
+            changed_by=self.other_candidate,
+            action="Application submitted",
+        )
+
+        self.client.force_authenticate(user=self.candidate)
+
+        response = self.client.get(
+            f"/api/candidate/applications/{application.id}/timeline/"
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK
+        )
+
+        self.assertEqual(
+            response.data["count"],
+            0
         )

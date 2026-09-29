@@ -42,6 +42,7 @@ from .models import (
     Resume,
     Application,
     ApplicationStatusHistory,
+    SavedJob,
 )
 
 from .serializers import (
@@ -53,6 +54,10 @@ from .serializers import (
     ApplicationSerializer,
     ApplicationStatusHistorySerializer,
     EmployerApplicantSerializer,
+    SavedJobSerializer,
+    CandidateApplicationSerializer,
+    CandidateApplicationTimelineSerializer,
+    CandidateRecommendationSerializer,
 )
 
 from .auth_serializers import (
@@ -1342,3 +1347,237 @@ class EmployerAnalyticsAPIView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+# =========================================================
+# CANDIDATE DASHBOARD - APPLICATIONS
+# =========================================================
+
+class CandidateApplicationListAPIView(ListAPIView):
+
+    serializer_class = CandidateApplicationSerializer
+    permission_classes = [IsCandidate]
+
+    def get_queryset(self):
+
+        return Application.objects.filter(
+            candidate__user=self.request.user
+        ).select_related(
+            "job",
+            "job__employer",
+            "candidate",
+        ).order_by(
+            "-applied_at"
+        )
+
+# =========================================================
+# CANDIDATE APPLICATION DETAIL
+# =========================================================
+
+class CandidateApplicationDetailAPIView(RetrieveAPIView):
+
+    serializer_class = CandidateApplicationSerializer
+    permission_classes = [IsCandidate]
+
+    def get_queryset(self):
+
+        return Application.objects.filter(
+            candidate__user=self.request.user
+        ).select_related(
+            "job",
+            "job__employer",
+            "candidate",
+        )
+
+# =========================================================
+# CANDIDATE INTERVIEW STATUS
+# =========================================================
+
+class CandidateInterviewListAPIView(ListAPIView):
+
+    serializer_class = CandidateApplicationSerializer
+    permission_classes = [IsCandidate]
+
+    def get_queryset(self):
+
+        return Application.objects.filter(
+            candidate__user=self.request.user,
+            status="interview_scheduled",
+        ).select_related(
+            "job",
+            "job__employer",
+            "candidate",
+        ).order_by(
+            "-applied_at"
+        )
+
+# =========================================================
+# CANDIDATE SAVED JOBS
+# =========================================================
+
+class CandidateSavedJobListCreateAPIView(APIView):
+
+    permission_classes = [IsCandidate]
+
+    def get(self, request):
+
+        saved_jobs = SavedJob.objects.filter(
+            candidate=request.user.candidate
+        ).select_related(
+            "job",
+            "job__employer",
+        )
+
+        serializer = SavedJobSerializer(
+            saved_jobs,
+            many=True
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
+
+    def post(self, request):
+
+        job_id = request.data.get("job")
+
+        if not job_id:
+            return Response(
+                {"error": "Job ID is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            job = Job.objects.select_related(
+                "employer"
+            ).get(
+                id=job_id,
+                status=Job.Status.ACTIVE,
+            )
+        except Job.DoesNotExist:
+            return Response(
+                {"error": "Active job not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if SavedJob.objects.filter(
+            candidate=request.user.candidate,
+            job=job,
+        ).exists():
+            return Response(
+                {"error": "Job is already saved."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        saved_job = SavedJob.objects.create(
+            candidate=request.user.candidate,
+            job=job,
+        )
+
+        serializer = SavedJobSerializer(saved_job)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED
+        )
+
+class CandidateSavedJobDeleteAPIView(APIView):
+
+    permission_classes = [IsCandidate]
+
+    def delete(self, request, job_id):
+
+        try:
+            saved_job = SavedJob.objects.get(
+                candidate=request.user.candidate,
+                job_id=job_id,
+            )
+        except SavedJob.DoesNotExist:
+            return Response(
+                {"error": "Saved job not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        saved_job.delete()
+
+        return Response(
+            {"message": "Job removed from saved jobs."},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+# =========================================================
+# CANDIDATE APPLICATION TIMELINE
+# =========================================================
+
+class CandidateApplicationTimelineAPIView(ListAPIView):
+
+    serializer_class = CandidateApplicationTimelineSerializer
+    permission_classes = [IsCandidate]
+
+    def get_queryset(self):
+
+        return ApplicationStatusHistory.objects.filter(
+            application__id=self.kwargs["pk"],
+            application__candidate__user=self.request.user,
+        ).order_by(
+            "changed_at"
+        )
+
+class CandidateRecommendationAPIView(ListAPIView):
+    serializer_class = CandidateRecommendationSerializer
+    permission_classes = [IsCandidate]
+
+    def get_queryset(self):
+        candidate = self.request.user.candidate
+
+        candidate_skills = {
+            skill.strip().lower()
+            for skill in candidate.skills.replace(";", ",").replace("\n", ",").split(",")
+            if skill.strip()
+        }
+
+        jobs = Job.objects.filter(
+            status=Job.Status.ACTIVE
+        ).select_related("employer")
+
+        applied_job_ids = Application.objects.filter(
+            candidate=candidate
+        ).values_list("job_id", flat=True)
+
+        jobs = jobs.exclude(id__in=applied_job_ids)
+
+        recommendations = []
+
+        for job in jobs:
+            required_skills = {
+                skill.strip().lower()
+                for skill in job.required_skills.replace(";", ",").replace("\n", ",").split(",")
+                if skill.strip()
+            }
+
+            if not required_skills:
+                continue
+
+            matched_skills = sorted(
+                candidate_skills.intersection(required_skills)
+            )
+
+            match_score = round(
+                (len(matched_skills) / len(required_skills)) * 100,
+                2
+            )
+
+            job.match_score = match_score
+            job.matched_skills = matched_skills
+
+            recommendations.append(job)
+
+        recommendations.sort(
+            key=lambda job: (
+                job.match_score,
+                job.created_at
+            ),
+            reverse=True
+        )
+
+        return recommendations
