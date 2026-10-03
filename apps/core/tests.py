@@ -1943,3 +1943,42 @@ class CandidateDashboardTests(APITestCase):
             response.data["count"],
             0
         )
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+
+from apps.core.services.resume_cleaner import clean_resume_text
+from apps.core.services.resume_parser import get_file_extension
+
+
+class ResumeParserUtilityTests(APITestCase):
+
+    def test_get_pdf_extension(self):
+        self.assertEqual(
+            get_file_extension("resume.pdf"),
+            ".pdf"
+        )
+
+    def test_get_docx_extension(self):
+        self.assertEqual(
+            get_file_extension("resume.docx"),
+            ".docx"
+        )
+
+    def test_clean_resume_text(self):
+
+        raw_text = """
+        John Doe
+
+
+        Python     Django
+
+
+        PostgreSQL
+        """
+
+        cleaned = clean_resume_text(raw_text)
+
+        self.assertEqual(
+            cleaned,
+            "John Doe\nPython Django\nPostgreSQL"
+        )

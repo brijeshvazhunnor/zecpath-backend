@@ -495,4 +495,34 @@ class ModerationFlagSerializer(serializers.ModelSerializer):
             "reviewed_at",
         ]
 
-        
+
+from rest_framework import serializers
+
+
+class ResumeParseSerializer(serializers.Serializer):
+    """
+    Serializer for resume upload and parsing.
+    """
+
+    file = serializers.FileField(required=True)
+
+    def validate_file(self, value):
+        """
+        Basic file validation.
+        """
+
+        max_size = 5 * 1024 * 1024  # 5 MB
+
+        if value.size > max_size:
+            raise serializers.ValidationError(
+                "Resume file size must not exceed 5 MB."
+            )
+
+        filename = value.name.lower()
+
+        if not filename.endswith((".pdf", ".docx")):
+            raise serializers.ValidationError(
+                "Only PDF and DOCX files are supported."
+            )
+
+        return value

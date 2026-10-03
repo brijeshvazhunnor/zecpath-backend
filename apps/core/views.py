@@ -62,6 +62,7 @@ from .serializers import (
     CandidateRecommendationSerializer,
     AuditLogSerializer,
     ModerationFlagSerializer,
+    ResumeParseSerializer,
 )
 
 from .auth_serializers import (
@@ -86,6 +87,11 @@ from django.db.models.functions import TruncDate
 from django.utils import timezone
 from datetime import timedelta
 
+from rest_framework.parsers import MultiPartParser, FormParser
+from .services.resume_parser import (
+    extract_resume_text,
+    ResumeParsingError,
+)
 
 # =========================================================
 # HOME
@@ -2288,3 +2294,67 @@ class AdminAuditLogListAPIView(ListAPIView):
             )
 
         return queryset
+
+
+# =========================================================
+# Resume-Extract
+# =========================================================
+
+class ResumeTextExtractionAPIView(APIView):
+    """
+    Upload a PDF or DOCX resume and extract cleaned text.
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    parser_classes = [
+        MultiPartParser,
+        FormParser,
+    ]
+
+    def post(self, request):
+
+        serializer = ResumeParseSerializer(
+            data=request.data
+        )
+
+        if not serializer.is_valid():
+
+            return Response(
+                {
+                    "error": serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        resume_file = serializer.validated_data["file"]
+
+        try:
+
+            result = extract_resume_text(
+                resume_file
+            )
+
+        except ResumeParsingError as exc:
+
+            return Response(
+                {
+                    "error": str(exc)
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "filename": resume_file.name,
+                "file_type": result["file_type"],
+                "raw_text": result["raw_text"],
+                "cleaned_text": result["cleaned_text"],
+                "character_count": len(
+                    result["cleaned_text"]
+                ),
+            },
+            status=status.HTTP_200_OK
+        )
