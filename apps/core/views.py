@@ -63,6 +63,7 @@ from .serializers import (
     AuditLogSerializer,
     ModerationFlagSerializer,
     ResumeParseSerializer,
+    ResumeAnalyzeSerializer,
 )
 
 from .auth_serializers import (
@@ -92,6 +93,7 @@ from .services.resume_parser import (
     extract_resume_text,
     ResumeParsingError,
 )
+from .services.resume_nlp import analyze_resume_text
 
 # =========================================================
 # HOME
@@ -2355,6 +2357,85 @@ class ResumeTextExtractionAPIView(APIView):
                 "character_count": len(
                     result["cleaned_text"]
                 ),
+            },
+            status=status.HTTP_200_OK
+        )
+
+#=========================================================
+#=====================Resume-Analyze======================
+#=========================================================
+
+class ResumeAnalysisAPIView(APIView):
+    """
+    Upload a PDF/DOCX resume and return structured
+    NLP-based resume information.
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    parser_classes = [
+        MultiPartParser,
+        FormParser,
+    ]
+
+    def post(self, request):
+
+        serializer = ResumeAnalyzeSerializer(
+            data=request.data
+        )
+
+        if not serializer.is_valid():
+
+            return Response(
+                {
+                    "error": serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        resume_file = serializer.validated_data["file"]
+
+        try:
+
+            parsed_result = extract_resume_text(
+                resume_file
+            )
+
+        except ResumeParsingError as exc:
+
+            return Response(
+                {
+                    "error": str(exc)
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        cleaned_text = parsed_result[
+            "cleaned_text"
+        ]
+
+        structured_data = analyze_resume_text(
+            cleaned_text
+        )
+
+        return Response(
+            {
+                "filename": resume_file.name,
+
+                "file_type": parsed_result[
+                    "file_type"
+                ],
+
+                "resume": structured_data,
+
+                "text": {
+                    "character_count": len(
+                        cleaned_text
+                    ),
+                    "cleaned_text": cleaned_text,
+                },
             },
             status=status.HTTP_200_OK
         )

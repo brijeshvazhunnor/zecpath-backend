@@ -526,3 +526,33 @@ class ResumeParseSerializer(serializers.Serializer):
             )
 
         return value
+
+#=========================================
+#==========DAY24==========================
+#=========================================
+class ResumeAnalyzeSerializer(serializers.Serializer):
+    """
+    Serializer for resume upload and NLP analysis.
+    """
+
+    file = serializers.FileField(required=True)
+
+    def validate_file(self, value):
+
+        max_size = 5 * 1024 * 1024  # 5 MB
+
+        if value.size > max_size:
+            raise serializers.ValidationError(
+                "Resume file size must not exceed 5 MB."
+            )
+
+        filename = value.name.lower()
+
+        if not filename.endswith(
+            (".pdf", ".docx")
+        ):
+            raise serializers.ValidationError(
+                "Only PDF and DOCX files are supported."
+            )
+
+        return value

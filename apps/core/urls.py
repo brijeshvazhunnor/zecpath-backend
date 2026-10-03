@@ -43,6 +43,7 @@ from .views import (
     AdminJobActivityAPIView,
     AdminAuditLogListAPIView,
     ResumeTextExtractionAPIView,
+    ResumeAnalysisAPIView,
 )
 
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -279,5 +280,9 @@ urlpatterns = [
         ResumeTextExtractionAPIView.as_view(),
         name="resume-parse",
     ),
-
+    path(
+        "resume/analyze/",
+        ResumeAnalysisAPIView.as_view(),
+        name="resume-analyze",
+    ),
 ]

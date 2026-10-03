@@ -10,6 +10,16 @@ from apps.core.models import (
     Employer,
 )
 User = get_user_model()
+from django.test import TestCase
+
+from apps.core.services.resume_nlp import (
+    tokenize_text,
+    extract_skills,
+    extract_experience_years,
+    extract_roles,
+    extract_education,
+    analyze_resume_text,
+)
 
 
 class AuthenticationTests(APITestCase):
@@ -1981,4 +1991,142 @@ class ResumeParserUtilityTests(APITestCase):
         self.assertEqual(
             cleaned,
             "John Doe\nPython Django\nPostgreSQL"
+        )
+
+class ResumeNLPTests(TestCase):
+
+    def test_tokenization(self):
+
+        text = "Python Django Developer"
+
+        tokens = tokenize_text(text)
+
+        self.assertIn(
+            "Python",
+            tokens
+        )
+
+        self.assertIn(
+            "Django",
+            tokens
+        )
+
+        self.assertIn(
+            "Developer",
+            tokens
+        )
+
+
+    def test_skill_extraction(self):
+
+        text = """
+        Python Django PostgreSQL TensorFlow Docker
+        """
+
+        skills = extract_skills(text)
+
+        self.assertIn(
+            "Python",
+            skills
+        )
+
+        self.assertIn(
+            "Django",
+            skills
+        )
+
+        self.assertIn(
+            "PostgreSQL",
+            skills
+        )
+
+        self.assertIn(
+            "TensorFlow",
+            skills
+        )
+
+
+    def test_experience_extraction(self):
+
+        text = "I have 3 years of experience in Python."
+
+        years = extract_experience_years(text)
+
+        self.assertEqual(
+            years,
+            3
+        )
+
+
+    def test_role_detection(self):
+
+        text = "Python Developer and Machine Learning Engineer"
+
+        roles = extract_roles(text)
+
+        self.assertIn(
+            "Python Developer",
+            roles
+        )
+
+        self.assertIn(
+            "Machine Learning Engineer",
+            roles
+        )
+
+
+    def test_education_extraction(self):
+
+        text = """
+        MSc Computer Science
+        BSc Computer Science
+        """
+
+        education = extract_education(text)
+
+        self.assertTrue(
+            len(education) >= 2
+        )
+
+
+    def test_complete_resume_analysis(self):
+
+        text = """
+        Python Backend Developer
+
+        2 years of experience in Python development.
+
+        Skills:
+        Python, Django, PostgreSQL, Docker.
+
+        Education:
+        MSc Computer Science
+        """
+
+        result = analyze_resume_text(text)
+
+        self.assertIn(
+            "skills",
+            result
+        )
+
+        self.assertIn(
+            "experience",
+            result
+        )
+
+        self.assertIn(
+            "education",
+            result
+
+        )
+
+        self.assertIn(
+            "Python",
+            result["skills"]
+        )
+
+        self.assertEqual(
+            result["experience"]["years"],
+            2
         )
