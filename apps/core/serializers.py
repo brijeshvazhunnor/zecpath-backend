@@ -9,17 +9,34 @@ from .models import (
     Resume,
     ApplicationStatusHistory,
     SavedJob,
+    AuditLog,
+    ModerationFlag,
 )
 
 class UserSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = User
+
         fields = [
             "id",
             "username",
             "email",
             "phone",
             "role",
+            "is_active",
+            "is_verified",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "username",
+            "email",
+            "phone",
+            "role",
+            "is_active",
             "is_verified",
             "created_at",
             "updated_at",
@@ -416,3 +433,66 @@ class CandidateRecommendationSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+
+    admin_email = serializers.CharField(
+        source="admin.email",
+        read_only=True
+    )
+
+    class Meta:
+        model = AuditLog
+
+        fields = [
+            "id",
+            "admin",
+            "admin_email",
+            "action",
+            "target_type",
+            "target_id",
+            "description",
+            "created_at",
+        ]
+
+        read_only_fields = fields
+
+
+class ModerationFlagSerializer(serializers.ModelSerializer):
+
+    user_email = serializers.CharField(
+        source="user.email",
+        read_only=True
+    )
+
+    flagged_by_email = serializers.CharField(
+        source="flagged_by.email",
+        read_only=True
+    )
+
+    class Meta:
+        model = ModerationFlag
+
+        fields = [
+            "id",
+            "user",
+            "user_email",
+            "flagged_by",
+            "flagged_by_email",
+            "reason",
+            "status",
+            "created_at",
+            "reviewed_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "user_email",
+            "flagged_by",
+            "flagged_by_email",
+            "created_at",
+            "reviewed_at",
+        ]
+
+        

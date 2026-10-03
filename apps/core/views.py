@@ -43,6 +43,8 @@ from .models import (
     Application,
     ApplicationStatusHistory,
     SavedJob,
+    AuditLog,
+    ModerationFlag,
 )
 
 from .serializers import (
@@ -58,6 +60,8 @@ from .serializers import (
     CandidateApplicationSerializer,
     CandidateApplicationTimelineSerializer,
     CandidateRecommendationSerializer,
+    AuditLogSerializer,
+    ModerationFlagSerializer,
 )
 
 from .auth_serializers import (
@@ -76,6 +80,11 @@ from .permissions.profile_permissions import (
     IsCandidateProfileOwner,
     IsEmployerProfileOwner,
 )
+
+from django.db.models import Count
+from django.db.models.functions import TruncDate
+from django.utils import timezone
+from datetime import timedelta
 
 
 # =========================================================
@@ -1581,3 +1590,701 @@ class CandidateRecommendationAPIView(ListAPIView):
         )
 
         return recommendations
+
+
+# =========================================================
+# ADMIN - APPROVE EMPLOYER
+# =========================================================
+
+class AdminEmployerApprovalAPIView(APIView):
+
+    permission_classes = [
+        IsAdmin
+    ]
+
+    def patch(self, request, pk):
+
+        try:
+            employer = Employer.objects.select_related(
+                "user"
+            ).get(pk=pk)
+
+        except Employer.DoesNotExist:
+
+            return Response(
+                {
+                    "error": "Employer not found."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if employer.is_verified:
+
+            return Response(
+                {
+                    "error": "Employer is already approved."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        employer.is_verified = True
+        employer.user.is_verified = True
+
+        employer.save(
+            update_fields=[
+                "is_verified",
+                "updated_at",
+            ]
+        )
+
+        employer.user.save(
+            update_fields=[
+                "is_verified",
+                "updated_at",
+            ]
+        )
+
+        AuditLog.objects.create(
+            admin=request.user,
+            action=AuditLog.Action.APPROVE_EMPLOYER,
+            target_type="Employer",
+            target_id=employer.id,
+            description=(
+                f"Approved employer "
+                f"{employer.company_name or employer.user.email}"
+            ),
+        )
+
+        return Response(
+            {
+                "message": "Employer approved successfully.",
+                "employer_id": employer.id,
+                "company_name": employer.company_name,
+                "is_verified": employer.is_verified,
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+# =========================================================
+# ADMIN - BLOCK USER
+# =========================================================
+
+class AdminUserBlockAPIView(APIView):
+
+    permission_classes = [
+        IsAdmin
+    ]
+
+    def patch(self, request, pk):
+
+        try:
+            user = User.objects.get(pk=pk)
+
+        except User.DoesNotExist:
+
+            return Response(
+                {
+                    "error": "User not found."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if user == request.user:
+
+            return Response(
+                {
+                    "error": "Admin cannot block their own account."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not user.is_active:
+
+            return Response(
+                {
+                    "error": "User is already blocked."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user.is_active = False
+
+        user.save(
+            update_fields=[
+                "is_active",
+                "updated_at",
+            ]
+        )
+
+        # Also deactivate the related profile
+        if user.role == User.Role.CANDIDATE:
+
+            Candidate.objects.filter(
+                user=user
+            ).update(
+                is_active=False
+            )
+
+        elif user.role == User.Role.EMPLOYER:
+
+            Employer.objects.filter(
+                user=user
+            ).update(
+                is_active=False
+            )
+
+        AuditLog.objects.create(
+            admin=request.user,
+            action=AuditLog.Action.BLOCK_USER,
+            target_type="User",
+            target_id=user.id,
+            description=(
+                f"Blocked user {user.email}"
+            ),
+        )
+
+        return Response(
+            {
+                "message": "User blocked successfully.",
+                "user_id": user.id,
+                "email": user.email,
+                "is_active": user.is_active,
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+# =========================================================
+# ADMIN - UNBLOCK USER
+# =========================================================
+
+class AdminUserUnblockAPIView(APIView):
+
+    permission_classes = [
+        IsAdmin
+    ]
+
+    def patch(self, request, pk):
+
+        try:
+            user = User.objects.get(pk=pk)
+
+        except User.DoesNotExist:
+
+            return Response(
+                {
+                    "error": "User not found."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if user.is_active:
+
+            return Response(
+                {
+                    "error": "User is already active."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user.is_active = True
+
+        user.save(
+            update_fields=[
+                "is_active",
+                "updated_at",
+            ]
+        )
+
+        if user.role == User.Role.CANDIDATE:
+
+            Candidate.objects.filter(
+                user=user
+            ).update(
+                is_active=True
+            )
+
+        elif user.role == User.Role.EMPLOYER:
+
+            Employer.objects.filter(
+                user=user
+            ).update(
+                is_active=True
+            )
+
+        AuditLog.objects.create(
+            admin=request.user,
+            action=AuditLog.Action.UNBLOCK_USER,
+            target_type="User",
+            target_id=user.id,
+            description=(
+                f"Unblocked user {user.email}"
+            ),
+        )
+
+        return Response(
+            {
+                "message": "User unblocked successfully.",
+                "user_id": user.id,
+                "email": user.email,
+                "is_active": user.is_active,
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+# =========================================================
+# ADMIN - MANAGE JOB
+# =========================================================
+
+class AdminJobManageAPIView(APIView):
+
+    permission_classes = [
+        IsAdmin
+    ]
+
+    def patch(self, request, pk):
+
+        try:
+            job = Job.objects.select_related(
+                "employer",
+                "employer__user"
+            ).get(pk=pk)
+
+        except Job.DoesNotExist:
+
+            return Response(
+                {
+                    "error": "Job not found."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        new_status = request.data.get("status")
+        featured = request.data.get("featured")
+
+        changes = []
+
+        if new_status is not None:
+
+            if new_status not in [
+                Job.Status.ACTIVE,
+                Job.Status.INACTIVE,
+            ]:
+                return Response(
+                    {
+                        "error": (
+                            "Status must be either "
+                            "'active' or 'inactive'."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            job.status = new_status
+
+            changes.append(
+                f"status={new_status}"
+            )
+
+        if featured is not None:
+
+            if isinstance(featured, str):
+                featured = featured.lower() == "true"
+
+            job.featured = featured
+
+            changes.append(
+                f"featured={featured}"
+            )
+
+        if not changes:
+
+            return Response(
+                {
+                    "error": (
+                        "Provide at least one of "
+                        "'status' or 'featured'."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        job.save()
+
+        if new_status == Job.Status.ACTIVE:
+
+            action = AuditLog.Action.ACTIVATE_JOB
+
+        elif new_status == Job.Status.INACTIVE:
+
+            action = AuditLog.Action.DEACTIVATE_JOB
+
+        elif featured is True:
+
+            action = AuditLog.Action.FEATURE_JOB
+
+        else:
+
+            action = AuditLog.Action.UNFEATURE_JOB
+
+        AuditLog.objects.create(
+            admin=request.user,
+            action=action,
+            target_type="Job",
+            target_id=job.id,
+            description=(
+                f"Admin modified job "
+                f"'{job.title}': "
+                f"{', '.join(changes)}"
+            ),
+        )
+
+        return Response(
+            {
+                "message": "Job updated successfully.",
+                "job_id": job.id,
+                "title": job.title,
+                "status": job.status,
+                "featured": job.featured,
+            },
+            status=status.HTTP_200_OK
+        )
+
+# =========================================================
+# ADMIN - REMOVE SPAM JOB
+# =========================================================
+
+class AdminRemoveSpamJobAPIView(APIView):
+
+    permission_classes = [
+        IsAdmin
+    ]
+
+    def patch(self, request, pk):
+
+        try:
+            job = Job.objects.get(pk=pk)
+
+        except Job.DoesNotExist:
+
+            return Response(
+                {
+                    "error": "Job not found."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if job.status == Job.Status.INACTIVE:
+
+            return Response(
+                {
+                    "error": "Job is already inactive."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        job.status = Job.Status.INACTIVE
+
+        job.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        reason = request.data.get(
+            "reason",
+            "Job removed for moderation."
+        )
+
+        AuditLog.objects.create(
+            admin=request.user,
+            action=AuditLog.Action.REMOVE_SPAM_JOB,
+            target_type="Job",
+            target_id=job.id,
+            description=(
+                f"Removed job '{job.title}'. "
+                f"Reason: {reason}"
+            ),
+        )
+
+        return Response(
+            {
+                "message": "Job removed from public listings.",
+                "job_id": job.id,
+                "status": job.status,
+                "reason": reason,
+            },
+            status=status.HTTP_200_OK
+        )
+
+# =========================================================
+# ADMIN - FLAG ACCOUNT
+# =========================================================
+
+class AdminFlagAccountAPIView(APIView):
+
+    permission_classes = [
+        IsAdmin
+    ]
+
+    def post(self, request, pk):
+
+        try:
+            user = User.objects.get(pk=pk)
+
+        except User.DoesNotExist:
+
+            return Response(
+                {
+                    "error": "User not found."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        reason = request.data.get("reason")
+
+        if not reason:
+
+            return Response(
+                {
+                    "error": "Reason is required."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        flag = ModerationFlag.objects.create(
+            user=user,
+            flagged_by=request.user,
+            reason=reason,
+        )
+
+        AuditLog.objects.create(
+            admin=request.user,
+            action=AuditLog.Action.FLAG_ACCOUNT,
+            target_type="User",
+            target_id=user.id,
+            description=(
+                f"Flagged account {user.email}. "
+                f"Reason: {reason}"
+            ),
+        )
+
+        serializer = ModerationFlagSerializer(flag)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED
+        )
+
+# =========================================================
+# ADMIN - PLATFORM STATISTICS
+# =========================================================
+
+class AdminPlatformStatsAPIView(APIView):
+
+    permission_classes = [
+        IsAdmin
+    ]
+
+    def get(self, request):
+
+        return Response(
+            {
+                "users": {
+                    "total": User.objects.count(),
+                    "active": User.objects.filter(
+                        is_active=True
+                    ).count(),
+                    "blocked": User.objects.filter(
+                        is_active=False
+                    ).count(),
+                    "verified": User.objects.filter(
+                        is_verified=True
+                    ).count(),
+                },
+
+                "candidates": Candidate.objects.count(),
+
+                "employers": {
+                    "total": Employer.objects.count(),
+                    "verified": Employer.objects.filter(
+                        is_verified=True
+                    ).count(),
+                    "unverified": Employer.objects.filter(
+                        is_verified=False
+                    ).count(),
+                },
+
+                "jobs": {
+                    "total": Job.objects.count(),
+                    "active": Job.objects.filter(
+                        status=Job.Status.ACTIVE
+                    ).count(),
+                    "inactive": Job.objects.filter(
+                        status=Job.Status.INACTIVE
+                    ).count(),
+                },
+
+                "applications": {
+                    "total": Application.objects.count(),
+                    "applied": Application.objects.filter(
+                        status="applied"
+                    ).count(),
+                    "shortlisted": Application.objects.filter(
+                        status="shortlisted"
+                    ).count(),
+                    "interview_scheduled": Application.objects.filter(
+                        status="interview_scheduled"
+                    ).count(),
+                    "selected": Application.objects.filter(
+                        status="selected"
+                    ).count(),
+                    "rejected": Application.objects.filter(
+                        status="rejected"
+                    ).count(),
+                },
+
+                "moderation": {
+                    "open_flags": ModerationFlag.objects.filter(
+                        status=ModerationFlag.Status.OPEN
+                    ).count(),
+                },
+            },
+            status=status.HTTP_200_OK
+        )
+
+# =========================================================
+# ADMIN - USER GROWTH
+# =========================================================
+
+class AdminUserGrowthAPIView(APIView):
+
+    permission_classes = [
+        IsAdmin
+    ]
+
+    def get(self, request):
+
+        days = int(
+            request.query_params.get(
+                "days",
+                30
+            )
+        )
+
+        start_date = timezone.now() - timedelta(
+            days=days
+        )
+
+        growth = (
+            User.objects
+            .filter(created_at__gte=start_date)
+            .annotate(
+                date=TruncDate("created_at")
+            )
+            .values("date")
+            .annotate(
+                users=Count("id")
+            )
+            .order_by("date")
+        )
+
+        return Response(
+            {
+                "period_days": days,
+                "growth": list(growth),
+            },
+            status=status.HTTP_200_OK
+        )
+
+# =========================================================
+# ADMIN - JOB ACTIVITY
+# =========================================================
+
+class AdminJobActivityAPIView(APIView):
+
+    permission_classes = [
+        IsAdmin
+    ]
+
+    def get(self, request):
+
+        days = int(
+            request.query_params.get(
+                "days",
+                30
+            )
+        )
+
+        start_date = timezone.now() - timedelta(
+            days=days
+        )
+
+        jobs_created = (
+            Job.objects
+            .filter(created_at__gte=start_date)
+            .annotate(
+                date=TruncDate("created_at")
+            )
+            .values("date")
+            .annotate(
+                jobs=Count("id")
+            )
+            .order_by("date")
+        )
+
+        applications_created = (
+            Application.objects
+            .filter(applied_at__gte=start_date)
+            .annotate(
+                date=TruncDate("applied_at")
+            )
+            .values("date")
+            .annotate(
+                applications=Count("id")
+            )
+            .order_by("date")
+        )
+
+        return Response(
+            {
+                "period_days": days,
+                "jobs_created": list(jobs_created),
+                "applications_created": list(
+                    applications_created
+                ),
+            },
+            status=status.HTTP_200_OK
+        )
+
+# =========================================================
+# ADMIN - AUDIT LOGS
+# =========================================================
+
+class AdminAuditLogListAPIView(ListAPIView):
+
+    serializer_class = AuditLogSerializer
+
+    permission_classes = [
+        IsAdmin
+    ]
+
+    def get_queryset(self):
+
+        queryset = AuditLog.objects.select_related(
+            "admin"
+        ).all()
+
+        action = self.request.query_params.get(
+            "action"
+        )
+
+        if action:
+            queryset = queryset.filter(
+                action=action
+            )
+
+        return queryset

@@ -32,6 +32,16 @@ from .views import (
     CandidateSavedJobDeleteAPIView,
     CandidateApplicationTimelineAPIView,
     CandidateRecommendationAPIView,
+    AdminEmployerApprovalAPIView,
+    AdminUserBlockAPIView,
+    AdminUserUnblockAPIView,
+    AdminFlagAccountAPIView,
+    AdminJobManageAPIView,
+    AdminRemoveSpamJobAPIView,
+    AdminPlatformStatsAPIView,
+    AdminUserGrowthAPIView,
+    AdminJobActivityAPIView,
+    AdminAuditLogListAPIView,
 )
 
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -85,12 +95,6 @@ urlpatterns = [
         "jobs/latest/",
         LatestJobListAPIView.as_view(),
         name="latest-job-list",
-    ),
-
-    path(
-        "jobs/",
-        JobListAPIView.as_view(),
-        name="job-list",
     ),
     path(
         "jobs/<int:job_id>/apply/",
@@ -197,5 +201,76 @@ urlpatterns = [
         "candidate/recommendations/",
         CandidateRecommendationAPIView.as_view(),
         name="candidate-recommendations",
+    ),
+    # =========================================================
+    # ADMIN CONTROL PANEL
+    # =========================================================
+
+    path(
+        "admin/employers/<int:pk>/approve/",
+        AdminEmployerApprovalAPIView.as_view(),
+        name="admin-employer-approve",
+    ),
+
+    path(
+        "admin/users/<int:pk>/block/",
+        AdminUserBlockAPIView.as_view(),
+        name="admin-user-block",
+    ),
+
+    path(
+        "admin/users/<int:pk>/unblock/",
+        AdminUserUnblockAPIView.as_view(),
+        name="admin-user-unblock",
+    ),
+
+    path(
+        "admin/users/<int:pk>/flag/",
+        AdminFlagAccountAPIView.as_view(),
+        name="admin-user-flag",
+    ),
+
+    path(
+        "admin/jobs/<int:pk>/manage/",
+        AdminJobManageAPIView.as_view(),
+        name="admin-job-manage",
+    ),
+
+    path(
+        "admin/jobs/<int:pk>/remove-spam/",
+        AdminRemoveSpamJobAPIView.as_view(),
+        name="admin-job-remove-spam",
+    ),
+
+    # =========================================================
+    # ADMIN MONITORING
+    # =========================================================
+
+    path(
+        "admin/monitoring/stats/",
+        AdminPlatformStatsAPIView.as_view(),
+        name="admin-platform-stats",
+    ),
+
+    path(
+        "admin/monitoring/user-growth/",
+        AdminUserGrowthAPIView.as_view(),
+        name="admin-user-growth",
+    ),
+
+    path(
+        "admin/monitoring/job-activity/",
+        AdminJobActivityAPIView.as_view(),
+        name="admin-job-activity",
+    ),
+
+    # =========================================================
+    # ADMIN AUDIT LOGS
+    # =========================================================
+
+    path(
+        "admin/audit-logs/",
+        AdminAuditLogListAPIView.as_view(),
+        name="admin-audit-logs",
     ),
 ]

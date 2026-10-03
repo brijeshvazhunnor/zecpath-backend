@@ -432,3 +432,107 @@ class SavedJob(models.Model):
 
     def __str__(self):
         return f"{self.candidate} - {self.job}"
+
+
+class AuditLog(models.Model):
+
+    class Action(models.TextChoices):
+        APPROVE_EMPLOYER = "approve_employer", "Approve Employer"
+        BLOCK_USER = "block_user", "Block User"
+        UNBLOCK_USER = "unblock_user", "Unblock User"
+        ACTIVATE_JOB = "activate_job", "Activate Job"
+        DEACTIVATE_JOB = "deactivate_job", "Deactivate Job"
+        FEATURE_JOB = "feature_job", "Feature Job"
+        UNFEATURE_JOB = "unfeature_job", "Unfeature Job"
+        REMOVE_SPAM_JOB = "remove_spam_job", "Remove Spam Job"
+        FLAG_ACCOUNT = "flag_account", "Flag Account"
+
+    admin = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="audit_logs"
+    )
+
+    action = models.CharField(
+        max_length=50,
+        choices=Action.choices
+    )
+
+    target_type = models.CharField(
+        max_length=50
+    )
+
+    target_id = models.PositiveIntegerField(
+        null=True,
+        blank=True
+    )
+
+    description = models.TextField(
+        blank=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+        indexes = [
+            models.Index(fields=["admin", "created_at"]),
+            models.Index(fields=["action", "created_at"]),
+            models.Index(fields=["target_type", "target_id"]),
+        ]
+
+    def __str__(self):
+        return f"{self.admin} - {self.action}"
+
+
+class ModerationFlag(models.Model):
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        REVIEWED = "reviewed", "Reviewed"
+        RESOLVED = "resolved", "Resolved"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="moderation_flags"
+    )
+
+    flagged_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_flags"
+    )
+
+    reason = models.TextField()
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.OPEN
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+        indexes = [
+            models.Index(fields=["user", "status"]),
+            models.Index(fields=["status", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"Flag: {self.user.email} - {self.status}"
