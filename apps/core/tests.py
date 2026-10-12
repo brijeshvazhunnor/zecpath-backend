@@ -12,6 +12,11 @@ from apps.core.models import (
 User = get_user_model()
 from django.test import TestCase
 
+from types import SimpleNamespace
+from django.test import SimpleTestCase
+from decimal import Decimal
+from apps.core.services.ats_scoring import calculate_ats_score
+
 from apps.core.services.resume_nlp import (
     tokenize_text,
     extract_skills,
@@ -2130,3 +2135,77 @@ class ResumeNLPTests(TestCase):
             result["experience"]["years"],
             2
         )
+
+
+
+
+class ATSScoringServiceTests(SimpleTestCase):
+
+    def setUp(self):
+        self.candidate = SimpleNamespace(
+            skills="Python, Django, PostgreSQL",
+            education="BSc Computer Science",
+            experience="2 years of experience",
+        )
+
+        self.job = SimpleNamespace(
+            required_skills="Python, Django, Docker",
+            experience="2 years",
+            description="Bachelor's degree in Computer Science required",
+        )
+
+        self.application = SimpleNamespace(
+            job=self.job,
+            candidate=self.candidate,
+            resume_snapshot={
+                "resume": {
+                    "skills": [
+                        "Python",
+                        "Django",
+                        "PostgreSQL",
+                    ],
+                    "education": [
+                        "BSc Computer Science",
+                    ],
+                    "experience": {
+                        "years": 2,
+                        "roles": [],
+                    },
+                }
+            },
+        )
+
+    def test_calculates_weighted_score(self):
+        result = calculate_ats_score(self.application)
+
+        self.assertEqual(result["skills_score"], Decimal("66.67"))
+        self.assertEqual(result["experience_score"], Decimal("100.00"))
+        self.assertEqual(result["education_score"], Decimal("100.00"))
+        self.assertEqual(result["score"], Decimal("83.34"))
+
+    def test_identifies_matched_and_missing_skills(self):
+        result = calculate_ats_score(self.application)
+
+        self.assertIn("Python", result["matched_skills"])
+        self.assertIn("Django", result["matched_skills"])
+        self.assertIn("Docker", result["missing_skills"])
+
+    def test_missing_experience_does_not_get_full_score(self):
+        self.application.resume_snapshot["resume"]["experience"] = {
+            "years": None,
+            "roles": [],
+        }
+        self.candidate.experience = ""
+
+        result = calculate_ats_score(self.application)
+
+        self.assertEqual(
+            result["experience_score"],
+            Decimal("0.00"),
+        )
+
+    def test_score_is_within_percentage_range(self):
+        result = calculate_ats_score(self.application)
+
+        self.assertGreaterEqual(result["score"], 0)
+        self.assertLessEqual(result["score"], 100)

@@ -45,7 +45,11 @@ from .models import (
     SavedJob,
     AuditLog,
     ModerationFlag,
+    ATSScore,
 )
+
+from django.shortcuts import get_object_or_404
+from apps.core.services.ats_scoring import calculate_ats_score
 
 from .serializers import (
     UserSerializer,
@@ -2438,4 +2442,167 @@ class ResumeAnalysisAPIView(APIView):
                 },
             },
             status=status.HTTP_200_OK
+        )
+
+
+
+def _can_manage_job(request_user, job):
+    """Allow the owning employer or an admin to manage ATS scores."""
+    if request_user.role == User.Role.ADMIN:
+        return True
+
+    return (
+        request_user.role == User.Role.EMPLOYER
+        and job.employer.user_id == request_user.id
+    )
+
+
+def _save_application_ats_score(application):
+    """Calculate a score and create or update its database record."""
+    result = calculate_ats_score(application)
+
+    score_record, _ = ATSScore.objects.update_or_create(
+        application=application,
+        defaults={
+            "score": result["score"],
+            "skills_score": result["skills_score"],
+            "experience_score": result["experience_score"],
+            "education_score": result["education_score"],
+            "matched_skills": result["matched_skills"],
+            "missing_skills": result["missing_skills"],
+        },
+    )
+
+    return result, score_record
+
+
+class ATSApplicationScoreAPIView(APIView):
+    """Calculate and store the ATS score for one application."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, job_id, application_id):
+        job = get_object_or_404(Job, pk=job_id)
+
+        if not _can_manage_job(request.user, job):
+            return Response(
+                {"error": "You cannot access ATS scores for this job."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        application = get_object_or_404(
+            Application,
+            pk=application_id,
+            job=job,
+        )
+
+        result, score_record = _save_application_ats_score(
+            application
+        )
+
+        return Response(
+            {
+                "application_id": application.id,
+                "job_id": job.id,
+                "candidate_id": application.candidate_id,
+                "candidate_name": application.candidate.full_name,
+                "ats_score": float(score_record.score),
+                "score_breakdown": {
+                    "skills": float(result["skills_score"]),
+                    "experience": float(result["experience_score"]),
+                    "education": float(result["education_score"]),
+                },
+                "matched_skills": result["matched_skills"],
+                "missing_skills": result["missing_skills"],
+                "experience": {
+                    "candidate_years": result[
+                        "candidate_experience_years"
+                    ],
+                    "required_years": result[
+                        "required_experience_years"
+                    ],
+                },
+                "education": {
+                    "candidate_level": result[
+                        "candidate_education_level"
+                    ],
+                    "required_level": result[
+                        "required_education_level"
+                    ],
+                },
+                "calculated_at": score_record.calculated_at,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ATSRankedCandidatesAPIView(APIView):
+    """Calculate and return applicants ordered by ATS score."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, job_id):
+        job = get_object_or_404(Job, pk=job_id)
+
+        if not _can_manage_job(request.user, job):
+            return Response(
+                {"error": "You cannot access ATS rankings for this job."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        applications = (
+            Application.objects
+            .filter(job=job)
+            .exclude(status="rejected")
+            .select_related("candidate", "candidate__user", "job")
+        )
+
+        ranked_candidates = []
+
+        for application in applications:
+            result, score_record = _save_application_ats_score(
+                application
+            )
+
+            ranked_candidates.append(
+                {
+                    "application_id": application.id,
+                    "candidate_id": application.candidate_id,
+                    "candidate_name": application.candidate.full_name,
+                    "candidate_email": application.candidate.email,
+                    "application_status": application.status,
+                    "ats_score": float(score_record.score),
+                    "score_breakdown": {
+                        "skills": float(result["skills_score"]),
+                        "experience": float(result["experience_score"]),
+                        "education": float(result["education_score"]),
+                    },
+                    "matched_skills": result["matched_skills"],
+                    "missing_skills": result["missing_skills"],
+                    "applied_at": application.applied_at,
+                }
+            )
+
+        ranked_candidates.sort(
+            key=lambda item: (
+                item["ats_score"],
+                item["applied_at"],
+                -item["application_id"],
+            ),
+            reverse=True,
+        )
+
+        for rank, candidate in enumerate(ranked_candidates, start=1):
+            candidate["rank"] = rank
+            candidate["suitability_percentage"] = candidate["ats_score"]
+            candidate["applied_at"] = candidate["applied_at"].isoformat()
+
+        return Response(
+            {
+                "job_id": job.id,
+                "job_title": job.title,
+                "total_candidates": len(ranked_candidates),
+                "ranking": ranked_candidates,
+            },
+            status=status.HTTP_200_OK,
         )

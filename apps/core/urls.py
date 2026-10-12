@@ -44,6 +44,8 @@ from .views import (
     AdminAuditLogListAPIView,
     ResumeTextExtractionAPIView,
     ResumeAnalysisAPIView,
+    ATSApplicationScoreAPIView,
+    ATSRankedCandidatesAPIView,
 )
 
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -284,5 +286,15 @@ urlpatterns = [
         "resume/analyze/",
         ResumeAnalysisAPIView.as_view(),
         name="resume-analyze",
+    ),
+    path(
+        "jobs/<int:job_id>/applications/<int:application_id>/ats-score/",
+        ATSApplicationScoreAPIView.as_view(),
+        name="ats-application-score",
+    ),
+    path(
+        "jobs/<int:job_id>/ats-ranking/",
+        ATSRankedCandidatesAPIView.as_view(),
+        name="ats-ranked-candidates",
     ),
 ]

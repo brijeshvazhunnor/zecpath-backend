@@ -536,3 +536,52 @@ class ModerationFlag(models.Model):
 
     def __str__(self):
         return f"Flag: {self.user.email} - {self.status}"
+
+
+class ATSScore(models.Model):
+    application = models.OneToOneField(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="ats_score",
+    )
+
+    score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+    )
+
+    skills_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+    )
+
+    experience_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+    )
+
+    education_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+    )
+
+    matched_skills = models.JSONField(default=list)
+    missing_skills = models.JSONField(default=list)
+
+    calculated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-score", "-calculated_at"]
+        indexes = [
+            models.Index(fields=["-score"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"Application {self.application_id}: "
+            f"{self.score}%"
+        )
