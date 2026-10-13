@@ -63,6 +63,7 @@ from .models import (
 
 from django.shortcuts import get_object_or_404
 from apps.core.services.ats_scoring import calculate_ats_score
+from apps.core.services.notifications import queue_application_notification
 
 from .serializers import (
     UserSerializer,
@@ -668,6 +669,11 @@ class JobApplicationCreateAPIView(APIView):
             status="applied"
         )
 
+        queue_application_notification(
+            application.id,
+            "application_submitted",
+        )
+
         return Response(
             ApplicationSerializer(application).data,
             status=status.HTTP_201_CREATED
@@ -1218,6 +1224,12 @@ class ApplicationStatusUpdateAPIView(APIView):
             changed_by=request.user,
             action=f"Status changed from {old_status} to {new_status}",
         )
+
+        if new_status in ("shortlisted", "rejected"):
+            queue_application_notification(
+                application.id,
+                new_status,
+            )
 
         return Response(
             {

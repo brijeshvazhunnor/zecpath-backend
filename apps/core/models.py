@@ -633,3 +633,63 @@ class ShortlistingRule(models.Model):
 
     def __str__(self):
         return f"Shortlisting rules for job {self.job_id}"
+
+
+class NotificationLog(models.Model):
+
+    class EventType(models.TextChoices):
+        APPLICATION_SUBMITTED = (
+            "application_submitted",
+            "Application Submitted",
+        )
+        SHORTLISTED = "shortlisted", "Shortlisted"
+        REJECTED = "rejected", "Rejected"
+
+    class DeliveryStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        SENT = "sent", "Sent"
+        FAILED = "failed", "Failed"
+
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notification_logs",
+    )
+
+    event_type = models.CharField(
+        max_length=30,
+        choices=EventType.choices,
+    )
+
+    recipient = models.EmailField()
+
+    subject = models.CharField(max_length=255)
+
+    status = models.CharField(
+        max_length=10,
+        choices=DeliveryStatus.choices,
+        default=DeliveryStatus.PENDING,
+    )
+
+    attempts = models.PositiveIntegerField(default=0)
+
+    last_error = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["event_type", "created_at"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.event_type} to {self.recipient} "
+            f"({self.status})"
+        )

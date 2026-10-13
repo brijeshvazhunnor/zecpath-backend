@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.core.mail import send_mail
 from django.conf import settings
+from apps.core.services.notifications import queue_application_notification
 from django.db import transaction
 
 from apps.core.models import (
@@ -56,31 +57,13 @@ def _save_ats_score(application):
 
 
 def _notify_candidate(application, new_status):
-    """
-    Best-effort email notification. Configure Django email
-    settings before enabling production email delivery.
-    """
-    candidate_user = application.candidate.user
-    email = getattr(candidate_user, "email", None)
-
-    if not email:
+    if new_status not in ("shortlisted", "rejected"):
         return
 
-    try:
-        send_mail(
-            subject=f"Application update: {application.job.title}",
-            message=(
-                f"Your application for {application.job.title} "
-                f"has been updated to: {new_status}."
-            ),
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
-            recipient_list=[email],
-            fail_silently=True,
-        )
-    except Exception:
-        # A mail server problem must not undo an application status.
-        pass
-
+    queue_application_notification(
+        application.id,
+        new_status,
+    )
 
 def _record_status_change(application, new_status, actor=None, action=""):
     old_status = application.status
