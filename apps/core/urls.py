@@ -46,6 +46,10 @@ from .views import (
     ResumeAnalysisAPIView,
     ATSApplicationScoreAPIView,
     ATSRankedCandidatesAPIView,
+    AutoShortlistAPIView,
+    ApplicationAutomationAPIView,
+    ManualApplicationStatusAPIView,
+    ShortlistingRuleAPIView,
 )
 
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -296,5 +300,31 @@ urlpatterns = [
         "jobs/<int:job_id>/ats-ranking/",
         ATSRankedCandidatesAPIView.as_view(),
         name="ats-ranked-candidates",
+    ),
+    #==========DAY26++++++++++++
+    path(
+        "applications/<int:application_id>/status/",
+        ManualApplicationStatusAPIView.as_view(),
+        name="application-manual-status",
+    ),
+    path(
+        "jobs/<int:job_id>/auto-shortlist/",
+        AutoShortlistAPIView.as_view(),
+        name="auto-shortlist",
+    ),
+    path(
+        "applications/<int:application_id>/automate/",
+        ApplicationAutomationAPIView.as_view(),
+        name="application-automate",
+    ),
+    path(
+        "applications/<int:application_id>/status/",
+        ManualApplicationStatusAPIView.as_view(),
+        name="application-manual-status",
+    ),
+    path(
+        "jobs/<int:job_id>/shortlisting-rules/",
+        ShortlistingRuleAPIView.as_view(),
+        name="shortlisting-rules",
     ),
 ]

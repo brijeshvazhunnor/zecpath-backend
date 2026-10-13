@@ -585,3 +585,51 @@ class ATSScore(models.Model):
             f"Application {self.application_id}: "
             f"{self.score}%"
         )
+
+#=======================
+#=====ShortListingRule Model=========
+
+from django.db import models
+
+
+class ShortlistingRule(models.Model):
+    job = models.OneToOneField(
+        "core.Job",
+        on_delete=models.CASCADE,
+        related_name="shortlisting_rule",
+    )
+    shortlist_threshold = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=75.00,
+    )
+    reject_threshold = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=40.00,
+    )
+    auto_reject_enabled = models.BooleanField(default=True)
+    auto_notify_enabled = models.BooleanField(default=True)
+    is_enabled = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["job_id"]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.reject_threshold >= self.shortlist_threshold:
+            raise ValidationError(
+                "Reject threshold must be lower than shortlist threshold."
+            )
+
+        for field_name in ("reject_threshold", "shortlist_threshold"):
+            value = getattr(self, field_name)
+            if value < 0 or value > 100:
+                raise ValidationError(
+                    f"{field_name} must be between 0 and 100."
+                )
+
+    def __str__(self):
+        return f"Shortlisting rules for job {self.job_id}"

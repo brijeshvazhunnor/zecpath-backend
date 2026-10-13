@@ -34,6 +34,18 @@ from rest_framework_simplejwt.exceptions import (
     TokenError,
 )
 
+
+from django.shortcuts import get_object_or_404
+from rest_framework import status
+
+from apps.core.services.shortlisting import (
+    _can_manage_job,
+    _record_status_change,
+    process_application,
+    process_job_applications,
+)
+
+
 from .models import (
     User,
     Job,
@@ -46,6 +58,7 @@ from .models import (
     AuditLog,
     ModerationFlag,
     ATSScore,
+    ShortlistingRule,
 )
 
 from django.shortcuts import get_object_or_404
@@ -2606,3 +2619,258 @@ class ATSRankedCandidatesAPIView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+#===========================================
+#============Automated Shortlisting=========
+
+class AutoShortlistAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, job_id):
+        job = get_object_or_404(
+            Job.objects.select_related("employer__user"),
+            pk=job_id,
+        )
+
+        if not _can_manage_job(request.user, job):
+            return Response(
+                {"detail": "You cannot manage this job."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        result = process_job_applications(job, actor=request.user)
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class ApplicationAutomationAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, application_id):
+        application = get_object_or_404(
+            Application.objects.select_related(
+                "job__employer__user",
+                "candidate__user",
+            ),
+            pk=application_id,
+        )
+
+        if not _can_manage_job(request.user, application.job):
+            return Response(
+                {"detail": "You cannot manage this application."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            result = process_application(
+                application,
+                actor=request.user,
+            )
+        except Exception as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class ManualApplicationStatusAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, application_id):
+        application = get_object_or_404(
+            Application.objects.select_related(
+                "job__employer__user",
+                "candidate__user",
+            ),
+            pk=application_id,
+        )
+
+        if not _can_manage_job(request.user, application.job):
+            return Response(
+                {"detail": "You cannot manage this application."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        new_status = request.data.get("status")
+
+        allowed_statuses = {
+            "applied",
+            "shortlisted",
+            "interview_scheduled",
+            "rejected",
+            "selected",
+        }
+
+        if new_status not in allowed_statuses:
+            return Response(
+                {"detail": "Invalid application status."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Prevent reopening or changing a terminal decision.
+        if application.status in {"rejected", "selected"}:
+            return Response(
+                {
+                    "detail": (
+                        "Rejected and selected applications are locked."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            from django.db import transaction
+
+            with transaction.atomic():
+                locked = (
+                    Application.objects.select_for_update()
+                    .select_related(
+                        "job__employer__user",
+                        "candidate__user",
+                    )
+                    .get(pk=application_id)
+                )
+
+                if locked.status in {"rejected", "selected"}:
+                    return Response(
+                        {"detail": "Application is locked."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                changed = _record_status_change(
+                    application=locked,
+                    new_status=new_status,
+                    actor=request.user,
+                    action="manual_override",
+                )
+
+                if changed:
+                    transaction.on_commit(
+                        lambda app_id=locked.id, status_value=new_status:
+                        _notify_status_change(app_id, status_value)
+                    )
+
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "application_id": application_id,
+                "status": new_status,
+                "changed": changed,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+def _notify_status_change(application_id, new_status):
+    from apps.core.models import Application
+    from apps.core.services.shortlisting import _notify_candidate
+
+    application = Application.objects.select_related(
+        "candidate__user", "job"
+    ).get(pk=application_id)
+
+    _notify_candidate(application, new_status)
+
+
+class ShortlistingRuleAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, job_id):
+        job = get_object_or_404(
+            Job.objects.select_related("employer__user"),
+            pk=job_id,
+        )
+
+        if not _can_manage_job(request.user, job):
+            return Response(
+                {"detail": "You cannot manage this job."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        rule, _ = ShortlistingRule.objects.get_or_create(job=job)
+
+        return Response({
+            "job_id": job.id,
+            "shortlist_threshold": str(rule.shortlist_threshold),
+            "reject_threshold": str(rule.reject_threshold),
+            "auto_reject_enabled": rule.auto_reject_enabled,
+            "auto_notify_enabled": rule.auto_notify_enabled,
+            "is_enabled": rule.is_enabled,
+        })
+
+    def patch(self, request, job_id):
+        from django.core.exceptions import ValidationError
+
+        job = get_object_or_404(
+            Job.objects.select_related("employer__user"),
+            pk=job_id,
+        )
+
+        if not _can_manage_job(request.user, job):
+            return Response(
+                {"detail": "You cannot manage this job."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        rule, _ = ShortlistingRule.objects.get_or_create(job=job)
+
+        decimal_fields = {
+            "shortlist_threshold",
+            "reject_threshold",
+        }
+        boolean_fields = {
+            "auto_reject_enabled",
+            "auto_notify_enabled",
+            "is_enabled",
+        }
+
+        for field in decimal_fields:
+            if field in request.data:
+                try:
+                    from decimal import Decimal, InvalidOperation
+
+                    value = Decimal(str(request.data[field]))
+                    if not value.is_finite() or not 0 <= value <= 100:
+                        raise ValueError
+                    setattr(rule, field, value)
+                except (InvalidOperation, ValueError, TypeError):
+                    return Response(
+                        {field: "Enter a number from 0 to 100."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+        for field in boolean_fields:
+            if field in request.data:
+                if not isinstance(request.data[field], bool):
+                    return Response(
+                        {field: "A boolean value is required."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                setattr(rule, field, request.data[field])
+
+        try:
+            rule.full_clean()
+            rule.save()
+        except ValidationError as exc:
+            return Response(
+                {"detail": exc.message_dict if hasattr(
+                    exc, "message_dict"
+                ) else exc.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({
+            "job_id": job.id,
+            "shortlist_threshold": str(rule.shortlist_threshold),
+            "reject_threshold": str(rule.reject_threshold),
+            "auto_reject_enabled": rule.auto_reject_enabled,
+            "auto_notify_enabled": rule.auto_notify_enabled,
+            "is_enabled": rule.is_enabled,
+        })
