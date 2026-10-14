@@ -119,3 +119,46 @@ Limitations:
 - The measurements do not represent concurrent traffic or production latency.
 - No equivalent measurement of the original implementation was taken,
   so these figures do not establish a before-and-after latency improvement.
+
+## 8. Controlled Local Load Test
+
+### Test configuration
+- Tool: Locust 2.46.7
+- Target: `GET /api/employer/analytics/`
+- Environment: Local Django development server with SQLite
+- Concurrent virtual users: 5
+- Configured run duration: 30 seconds
+- Authentication: JWT login using a test employer account
+
+### Results
+
+| Metric | Result |
+|---|---:|
+| Analytics requests | 133 |
+| Analytics failures | 0 |
+| Analytics failure rate | 0% |
+| Average response time | 16 ms |
+| Median response time (p50) | 14 ms |
+| 95th percentile (p95) | 24 ms |
+| Maximum response time | 58 ms |
+| Reported throughput | 4.51 requests/sec |
+| Login requests | 5 |
+| Average login response time | 599 ms |
+| Total requests, including login | 138 |
+| Total failures | 0 |
+
+### Interpretation and limitations
+
+The analytics endpoint completed all 133 measured requests without
+reported failures during this controlled local test. The observed p95
+response time was 24 ms.
+
+These measurements are a local baseline, not a production performance
+guarantee. The test used the Django development server, SQLite, a small
+dataset, and only five virtual users. Results do not establish production
+capacity, high-concurrency behavior, or a latency improvement over the
+original implementation. Login requests are reported separately from
+analytics endpoint measurements.
+
+Further evaluation should use representative data, a production-like
+server and database, and gradually increased concurrency.
