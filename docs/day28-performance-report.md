@@ -92,3 +92,30 @@ Analytics optimization commit:
 `8b6d58a perf: optimize employer analytics queries`
 
 The performance report is a separate documentation deliverable.
+
+## 6.1 Initial Employer Analytics Benchmark
+
+Endpoint: `/api/employer/analytics/`
+
+Method:
+- One warm-up request, excluded from measurements.
+- 30 measured requests.
+- Django REST Framework APIClient with in-process forced
+  authentication for an existing employer user.
+- SQL queries captured with Django's CaptureQueriesContext.
+
+Observed results:
+- Successful requests: 30/30 (HTTP 200)
+- Median response time: 2.86 ms
+- P95 response time: 5.70 ms
+- Minimum response time: 2.52 ms
+- Maximum response time: 5.97 ms
+- Median SQL queries per request: 2
+- Aggregate queries per request: 2
+
+Limitations:
+- This is a local development measurement using SQLite and a small dataset.
+- Forced authentication bypasses JWT token validation and login overhead.
+- The measurements do not represent concurrent traffic or production latency.
+- No equivalent measurement of the original implementation was taken,
+  so these figures do not establish a before-and-after latency improvement.
