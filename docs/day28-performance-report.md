@@ -25,7 +25,7 @@ The dataset is small and represents development data, not production load.
 
 Endpoint: `/api/employer/analytics/`
 
-The original implementation performed seven separate COUNT queries:
+The original implementation performed eight separate COUNT queries:
 - Total jobs
 - Active jobs
 - Closed jobs
@@ -39,7 +39,7 @@ The implementation was changed to use conditional aggregation:
 - One aggregate query calculates job counts.
 - One aggregate query calculates application counts.
 
-This reduces the analytics aggregation from seven separate count queries
+This reduces the analytics aggregation from eight separate count queries
 to two aggregate queries, excluding other queries that may occur during
 request authentication or processing.
 
