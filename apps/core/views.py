@@ -1,5 +1,6 @@
 from django.http import JsonResponse
 
+from django.db.models import Count, Q
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -1322,6 +1323,7 @@ class EmployerApplicantListAPIView(ListAPIView):
             "candidate",
         )
 
+
 class EmployerAnalyticsAPIView(APIView):
 
     permission_classes = [
@@ -1332,67 +1334,69 @@ class EmployerAnalyticsAPIView(APIView):
 
         employer = request.user.employer
 
-        jobs = Job.objects.filter(
+        # Aggregate job counts in one database query.
+        job_counts = Job.objects.filter(
             employer=employer
+        ).aggregate(
+            total_jobs=Count("id"),
+            active_jobs=Count(
+                "id",
+                filter=Q(status=Job.Status.ACTIVE),
+            ),
+            closed_jobs=Count(
+                "id",
+                filter=Q(status=Job.Status.INACTIVE),
+            ),
         )
 
-        applications = Application.objects.filter(
+        # Aggregate application counts in one database query.
+        application_counts = Application.objects.filter(
             job__employer=employer
+        ).aggregate(
+            total_applications=Count("id"),
+            shortlisted_applications=Count(
+                "id",
+                filter=Q(status="shortlisted"),
+            ),
+            interview_scheduled=Count(
+                "id",
+                filter=Q(status="interview_scheduled"),
+            ),
+            selected_applications=Count(
+                "id",
+                filter=Q(status="selected"),
+            ),
+            rejected_applications=Count(
+                "id",
+                filter=Q(status="rejected"),
+            ),
         )
 
-        total_jobs = jobs.count()
-
-        active_jobs = jobs.filter(
-            status=Job.Status.ACTIVE
-        ).count()
-
-        closed_jobs = jobs.filter(
-            status=Job.Status.INACTIVE
-        ).count()
-
-        total_applications = applications.count()
-
-        shortlisted_applications = applications.filter(
-            status="shortlisted"
-        ).count()
-
-        interview_scheduled = applications.filter(
-            status="interview_scheduled"
-        ).count()
-
-        selected_applications = applications.filter(
-            status="selected"
-        ).count()
-
-        rejected_applications = applications.filter(
-            status="rejected"
-        ).count()
+        total_applications = application_counts[
+            "total_applications"
+        ]
 
         if total_applications > 0:
             shortlist_ratio = round(
                 (
-                    shortlisted_applications
-                    / total_applications
+                    application_counts[
+                        "shortlisted_applications"
+                    ] / total_applications
                 ) * 100,
-                2
+                2,
             )
         else:
             shortlist_ratio = 0
 
         return Response(
             {
-                "total_jobs": total_jobs,
-                "active_jobs": active_jobs,
-                "closed_jobs": closed_jobs,
-                "total_applications": total_applications,
-                "shortlisted_applications": shortlisted_applications,
-                "interview_scheduled": interview_scheduled,
-                "selected_applications": selected_applications,
-                "rejected_applications": rejected_applications,
+                **job_counts,
+                **application_counts,
                 "shortlist_ratio": shortlist_ratio,
             },
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
+
 
 # =========================================================
 # CANDIDATE DASHBOARD - APPLICATIONS

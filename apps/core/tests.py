@@ -11,6 +11,8 @@ from apps.core.models import (
 )
 User = get_user_model()
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
+from django.db import connection
 
 from types import SimpleNamespace
 from django.test import SimpleTestCase
@@ -1429,6 +1431,30 @@ class EmployerDashboardTests(APITestCase):
         self.assertIn(
             self.application4.id,
             application_ids
+        )
+
+    def test_employer_analytics_uses_two_aggregate_queries(self):
+        self.client.force_authenticate(user=self.employer1)
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get("/api/employer/analytics/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        aggregate_queries = [
+            query["sql"]
+            for query in captured.captured_queries
+            if "COUNT(" in query["sql"].upper()
+            and (
+                '"core_job"' in query["sql"].lower()
+                or '"core_application"' in query["sql"].lower()
+            )
+        ]
+
+        self.assertEqual(
+            len(aggregate_queries),
+            2,
+            msg=f"Expected two analytics aggregate queries; got {len(aggregate_queries)}",
         )
 
     def test_employer_analytics_contains_correct_counts(self):
