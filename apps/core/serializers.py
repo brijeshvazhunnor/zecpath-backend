@@ -1,3 +1,8 @@
+import os
+import zipfile
+
+import pdfplumber
+from docx import Document
 from rest_framework import serializers
 
 from .models import (
@@ -169,11 +174,6 @@ class EmployerProfileSerializer(serializers.ModelSerializer):
         ]
 
 
-import os
-
-from rest_framework import serializers
-
-from .models import Candidate, Employer, Resume
 
 
 class ResumeSerializer(serializers.ModelSerializer):
@@ -202,7 +202,6 @@ class ResumeSerializer(serializers.ModelSerializer):
 
     def validate_file(self, value):
 
-        # Maximum file size: 5 MB
         max_size = 5 * 1024 * 1024
 
         if value.size > max_size:
@@ -210,20 +209,35 @@ class ResumeSerializer(serializers.ModelSerializer):
                 "Resume file size cannot exceed 5 MB."
             )
 
-        # Allowed extensions
-        allowed_extensions = [
-            ".pdf",
-            ".docx",
-        ]
+        extension = os.path.splitext(value.name)[1].lower()
 
-        extension = os.path.splitext(
-            value.name
-        )[1].lower()
-
-        if extension not in allowed_extensions:
+        if extension not in [".pdf", ".docx"]:
             raise serializers.ValidationError(
                 "Only PDF and DOCX files are allowed."
             )
+
+        try:
+            value.seek(0)
+
+            if extension == ".pdf":
+                with pdfplumber.open(value) as pdf:
+                    if not pdf.pages:
+                        raise ValueError("PDF contains no pages.")
+
+            elif extension == ".docx":
+                if not zipfile.is_zipfile(value):
+                    raise ValueError("Invalid DOCX archive.")
+
+                value.seek(0)
+                Document(value)
+
+        except Exception:
+            raise serializers.ValidationError(
+                "The uploaded file is not a valid PDF or DOCX document."
+            )
+
+        finally:
+            value.seek(0)
 
         return value
 
