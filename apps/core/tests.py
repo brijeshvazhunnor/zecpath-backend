@@ -9,6 +9,8 @@ from apps.core.models import (
     Candidate,
     Employer,
 )
+import io
+import pdfplumber
 User = get_user_model()
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
@@ -2235,3 +2237,180 @@ class ATSScoringServiceTests(SimpleTestCase):
 
         self.assertGreaterEqual(result["score"], 0)
         self.assertLessEqual(result["score"], 100)
+
+
+#=======================================
+#================DAY 29=================
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+
+
+
+class ResumeUploadSecurityTests(APITestCase):
+    def setUp(self):
+        self.candidate = User.objects.create_user(
+            username="resume_candidate",
+            email="resume_candidate@example.com",
+            password="Candidate@12345",
+            role="candidate",
+        )
+        self.employer = User.objects.create_user(
+            username="resume_employer",
+            email="resume_employer@example.com",
+            password="Employer@12345",
+            role="employer",
+        )
+
+        self.upload_url = "/api/profile/resume/upload/"
+        self.resume_url = "/api/profile/resume/"
+
+
+    def make_valid_pdf(self):
+        """Build a minimal valid PDF using Python's standard library."""
+        stream = (
+            b"BT /F1 12 Tf 72 720 Td "
+            b"(Resume Security Test) Tj ET\n"
+        )
+
+        objects = [
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R "
+                b"/MediaBox [0 0 612 792] "
+                b"/Resources << /Font << /F1 5 0 R >> >> "
+                b"/Contents 4 0 R >>"
+            ),
+            (
+                f"<< /Length {len(stream)} >>\n".encode()
+                + b"stream\n"
+                + stream
+                + b"endstream"
+            ),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        ]
+
+        pdf = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+        offsets = []
+
+        for number, obj in enumerate(objects, start=1):
+            offsets.append(len(pdf))
+            pdf.extend(f"{number} 0 obj\n".encode())
+            pdf.extend(obj)
+            pdf.extend(b"\nendobj\n")
+
+        xref_offset = len(pdf)
+        pdf.extend(b"xref\n0 6\n")
+        pdf.extend(b"0000000000 65535 f \n")
+
+        for offset in offsets:
+            pdf.extend(f"{offset:010d} 00000 n \n".encode())
+
+        pdf.extend(
+            (
+                "trailer\n"
+                "<< /Size 6 /Root 1 0 R >>\n"
+                "startxref\n"
+                f"{xref_offset}\n"
+                "%%EOF\n"
+            ).encode()
+        )
+
+        return bytes(pdf)
+
+    def make_file(self, name="resume.pdf", content=None):
+        if content is None:
+            content = self.make_valid_pdf()
+
+        content_type = (
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+            if name.lower().endswith(".docx")
+            else "application/pdf"
+        )
+
+        return SimpleUploadedFile(
+            name,
+            content,
+            content_type=content_type,
+        )
+
+
+    def test_unauthenticated_upload_is_rejected(self):
+        response = self.client.post(
+            self.upload_url,
+            {"file": self.make_file()},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_employer_cannot_upload_resume(self):
+        self.client.force_authenticate(user=self.employer)
+        response = self.client.post(
+            self.upload_url,
+            {"file": self.make_file()},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unsupported_extension_is_rejected(self):
+        self.client.force_authenticate(user=self.candidate)
+        response = self.client.post(
+            self.upload_url,
+            {"file": self.make_file("resume.exe", b"not a resume")},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_file_over_5_mb_is_rejected(self):
+        self.client.force_authenticate(user=self.candidate)
+        oversized_content = b"a" * (5 * 1024 * 1024 + 1)
+        response = self.client.post(
+            self.upload_url,
+            {"file": self.make_file("large.pdf", oversized_content)},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_malformed_pdf_is_rejected(self):
+        self.client.force_authenticate(user=self.candidate)
+        response = self.client.post(
+            self.upload_url,
+            {"file": self.make_file("fake.pdf", b"%PDF-1.4 not a real PDF")},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_malformed_docx_is_rejected(self):
+        self.client.force_authenticate(user=self.candidate)
+        response = self.client.post(
+            self.upload_url,
+            {"file": self.make_file("fake.docx", b"not a DOCX archive")},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_candidate_can_upload_pdf(self):
+        self.client.force_authenticate(user=self.candidate)
+        content = self.make_file().read()
+        response = self.client.post(
+            self.upload_url,
+            {"file": self.make_file()},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["original_filename"], "resume.pdf")
+        self.assertEqual(response.data["file_size"], len(content))
+
+    def test_employer_cannot_retrieve_candidate_resume(self):
+        self.client.force_authenticate(user=self.candidate)
+        upload_response = self.client.post(
+            self.upload_url,
+            {"file": self.make_file()},
+            format="multipart",
+        )
+        self.assertEqual(upload_response.status_code, status.HTTP_201_CREATED)
+
+        self.client.force_authenticate(user=self.employer)
+        response = self.client.get(self.resume_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
