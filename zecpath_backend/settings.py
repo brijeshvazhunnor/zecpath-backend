@@ -190,3 +190,13 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
+
+# Optional AI integration
+AI_ENABLED = os.getenv("AI_ENABLED", "False").lower() == "true"
+AI_API_KEY = os.getenv("AI_API_KEY", "")
+AI_API_BASE_URL = os.getenv(
+    "AI_API_BASE_URL",
+    "https://api.groq.com/openai/v1",
+).rstrip("/")
+AI_MODEL = os.getenv("AI_MODEL", "openai/gpt-oss-20b")
+AI_REQUEST_TIMEOUT = float(os.getenv("AI_REQUEST_TIMEOUT", "20"))
