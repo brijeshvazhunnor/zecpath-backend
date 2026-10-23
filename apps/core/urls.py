@@ -50,6 +50,7 @@ from .views import (
     ApplicationAutomationAPIView,
     ManualApplicationStatusAPIView,
     ShortlistingRuleAPIView,
+    AIInterviewQuestionsAPIView,
 )
 
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -326,5 +327,10 @@ urlpatterns = [
         "jobs/<int:job_id>/shortlisting-rules/",
         ShortlistingRuleAPIView.as_view(),
         name="shortlisting-rules",
+    ),
+    path(
+    "employer/jobs/<int:job_id>/interview-questions/",
+        AIInterviewQuestionsAPIView.as_view(),
+        name="ai-interview-questions",
     ),
 ]

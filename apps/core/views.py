@@ -22,7 +22,7 @@ from rest_framework.parsers import (
     MultiPartParser,
     FormParser,
 )
-
+from django.conf import settings
 from django_filters.rest_framework import DjangoFilterBackend
 
 from rest_framework_simplejwt.views import (
@@ -34,7 +34,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import (
     TokenError,
 )
-
+from apps.core.services.ai_client import AIServiceError
+from apps.core.services.interview_questions import generate_interview_questions
 
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -1397,7 +1398,79 @@ class EmployerAnalyticsAPIView(APIView):
             status=status.HTTP_200_OK,
         )
 
+# =========================================================
+# DAY_31
+# =========================================================
 
+
+class AIInterviewQuestionsAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, job_id):
+        job = get_object_or_404(Job, pk=job_id)
+
+        if not _can_manage_job(request.user, job):
+            return Response(
+                {"detail": "You do not have permission to manage this job."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not settings.AI_ENABLED:
+            return Response(
+                {"detail": "AI interview question generation is disabled."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        question_count = request.data.get("question_count", 8)
+        difficulty = request.data.get("difficulty", "mixed")
+
+        try:
+            if isinstance(question_count, str):
+                if not question_count.isdigit():
+                    raise ValueError("Question count must be an integer.")
+                question_count = int(question_count)
+
+            if (
+                isinstance(question_count, bool)
+                or not isinstance(question_count, int)
+                or not 1 <= question_count <= 15
+            ):
+                raise ValueError("Question count must be between 1 and 15.")
+
+            skills = [
+                skill.strip()
+                for skill in job.required_skills.replace(",", "\n").splitlines()
+                if skill.strip()
+            ]
+
+            questions = generate_interview_questions(
+                job_title=job.title,
+                job_description=job.description,
+                required_skills=skills,
+                question_count=question_count,
+                difficulty=difficulty,
+            )
+
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except AIServiceError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response(
+            {
+                "job_id": job.pk,
+                "job_title": job.title,
+                "question_count": len(questions),
+                "questions": questions,
+            },
+            status=status.HTTP_200_OK,
+        )
 # =========================================================
 # CANDIDATE DASHBOARD - APPLICATIONS
 # =========================================================
