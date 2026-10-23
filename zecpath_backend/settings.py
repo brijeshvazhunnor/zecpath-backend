@@ -44,6 +44,7 @@ INSTALLED_APPS = [
 
     "apps.core.apps.CoreConfig",
     "django_filters",
+    "django_celery_beat",
 ]
 AUTH_USER_MODEL = "core.User"
 
@@ -190,6 +191,9 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
+CELERY_BEAT_SCHEDULER = (
+    "django_celery_beat.schedulers:DatabaseScheduler"
+)
 
 # Optional AI integration
 AI_ENABLED = os.getenv("AI_ENABLED", "False").lower() == "true"
@@ -200,3 +204,11 @@ AI_API_BASE_URL = os.getenv(
 ).rstrip("/")
 AI_MODEL = os.getenv("AI_MODEL", "openai/gpt-oss-20b")
 AI_REQUEST_TIMEOUT = float(os.getenv("AI_REQUEST_TIMEOUT", "20"))
+
+# Celery Beat: run a lightweight background health check every 15 minutes.
+CELERY_BEAT_SCHEDULE = {
+    "periodic-queue-health-check-every-15-minutes": {
+        "task": "core.periodic_queue_health_check",
+        "schedule": 900.0,
+    },
+}
