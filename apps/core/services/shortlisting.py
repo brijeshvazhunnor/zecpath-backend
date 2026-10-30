@@ -15,6 +15,9 @@ from apps.core.models import (
 )
 from apps.core.services.ats_scoring import calculate_ats_score
 from apps.core.services.eligibility import check_application_eligibility
+from apps.core.services.call_trigger import (
+    create_ai_call_if_eligible,
+)
 
 
 TERMINAL_STATUSES = {"rejected", "selected"}
@@ -190,6 +193,12 @@ def process_application(application, actor=None):
                     ).get(pk=app_id),
                     status,
                 )
+            )
+
+        if changed and new_status == "shortlisted":
+            transaction.on_commit(
+                lambda app_id=application.id:
+                create_ai_call_if_eligible(app_id)
             )
 
     return {

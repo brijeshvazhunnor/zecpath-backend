@@ -123,6 +123,15 @@ class Candidate(models.Model):
     is_active = models.BooleanField(
         default=True
     )
+    ai_call_consent = models.BooleanField(
+        default=False,
+        help_text="Whether the candidate has consented to AI interview calls.",
+    )
+
+    available_for_ai_call = models.BooleanField(
+        default=False,
+        help_text="Whether the candidate is currently available for AI interview calls.",
+    )
 
     created_at = models.DateTimeField(
         auto_now_add=True
@@ -691,5 +700,64 @@ class NotificationLog(models.Model):
     def __str__(self):
         return (
             f"{self.event_type} to {self.recipient} "
+            f"({self.status})"
+        )
+
+
+class AICall(models.Model):
+
+    class Status(models.TextChoices):
+        SCHEDULED = "scheduled", "Scheduled"
+        QUEUED = "queued", "Queued"
+        IN_PROGRESS = "in_progress", "In Progress"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    application = models.OneToOneField(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="ai_call",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.SCHEDULED,
+    )
+
+    scheduled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    retry_count = models.PositiveSmallIntegerField(default=0)
+
+    max_retries = models.PositiveSmallIntegerField(default=3)
+
+    failure_reason = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "scheduled_at"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"AI call for application {self.application_id} "
             f"({self.status})"
         )
